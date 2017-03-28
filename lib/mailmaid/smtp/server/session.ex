@@ -42,7 +42,7 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   @maximum_size 10485760
-  @builtin_extensions [{'SIZE', "10485670"}, {'8BITMIME', true}, {'PIPELINING', true}]
+  @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
   @timeout 180000
 
   def start_link(socket, module, options) do
@@ -54,7 +54,7 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def init([socket, module, options]) do
-    {:ok, {peer_name, _port}} = socket.peername(socket)
+    {:ok, {peer_name, _port}} = :socket.peername(socket)
 
     case module.init(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), :proplists.get_value(:sessioncount, options, 0), peer_name, :proplists.get_value(:callbackoptions, options, [])) do
       {:ok, banner, callbackstate} ->
@@ -115,7 +115,7 @@ defmodule Mailmaid.SMTP.Server.Session do
 
     valid = case has_extension(extensions, "SIZE") do
       {:true, value} ->
-        case byte_size(envelope.data) > :erlang.list_to_integer(value) do
+        case byte_size(envelope.data) > String.to_integer(value) do
           true ->
             :socket.send(socket, "552 Message too large\r\n")
             :socket.active_once(socket)
@@ -153,13 +153,13 @@ defmodule Mailmaid.SMTP.Server.Session do
     case handle_request(parse_request(packet), state) do
       {:ok, %{extensions: extensions, options: options, readmessage: true} = new_state} ->
         max_size = case has_extension(extensions, "SIZE") do
-          {true, value} -> :erlang.list_to_integer(value)
+          {true, value} -> String.to_integer(value)
           false -> @maximum_size
         end
 
         session = self()
         size = 0
-        socket.setopts(socket, [{:packet, :raw}])
+        :socket.setopts(socket, [{:packet, :raw}])
         :erlang.spawn_opt(fn ->
           receive_data([], socket, 0, size, max_size, session, options)
         end, [:link, {:fullsweep_after, 0}])
@@ -217,7 +217,7 @@ defmodule Mailmaid.SMTP.Server.Session do
 
     case :binstr.strchr(request, ?\s) do
       0 ->
-        case :binstr.to_upper(request) do
+        case String.upcase(request) do
           <<"QUIT">> = res -> {res, <<>>}
           <<"DATA">> = res -> {res, <<>>}
           _ -> {request, <<>>}
@@ -227,7 +227,7 @@ defmodule Mailmaid.SMTP.Server.Session do
         verb = :binstr.substr(request, 1, index - 1)
         parameters = :binstr.strip(:binstr.substr(request, index + 1), :left, ?\s)
 
-        {:binstr.to_upper(verb), parameters}
+        {String.upcase(verb), parameters}
     end
   end
 
@@ -327,13 +327,15 @@ defmodule Mailmaid.SMTP.Server.Session do
         {:ok, state}
 
       {true, available_types} ->
-        case :lists.member(:string.to_upper(:erlang.binary_to_list(auth_type)), :string.tokens(available_types, ' ')) do
+        types = available_types |> String.split(" ") |> Enum.reject(&(&1 == ""))
+
+        case types |> Enum.member?(String.upcase(auth_type)) do
           false ->
             :socket.send(socket, "504 Unrecognized authentication type\r\n")
             {:ok, state}
 
           true ->
-            case :binstr.to_upper(auth_type) do
+            case String.upcase(auth_type) do
               <<"LOGIN">> ->
                 :socket.send(socket, "334 VXNlcm5hbWU6\r\n")
                 {:ok, %State{waitingauth: :login, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
@@ -360,7 +362,7 @@ defmodule Mailmaid.SMTP.Server.Session do
                 :crypto.start()
                 string = :smtp_util.get_cram_string(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()))
                 :socket.send(socket, ["334 ", string, "\r\n"])
-                {:ok, %State{waitingauth: :'cram-md5', authdata: :base64.decode(string), envelope: %Envelope{auth: {<<>>, <<>>}}}}
+                {:ok, %State{waitingauth: :'cram-md5', authdata: :base64.decode(string), envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
             end
         end
     end
@@ -414,7 +416,7 @@ defmodule Mailmaid.SMTP.Server.Session do
   def handle_request({<<"MAIL">>, args}, %{socket: socket, module: module, envelope: envelope, callbackstate: old_callback_state, extensions: extensions} = state) do
     case envelope.from do
       nil ->
-        case :binstr.strpos(:binstr.to_upper(args), "FROM:") do
+        case :binstr.strpos(String.upcase(args), "FROM:") do
           1 ->
             address = :binstr.strip(:binstr.substr(args, 6), :left, ?\s)
             case parse_encoded_address(address) do
@@ -438,7 +440,7 @@ defmodule Mailmaid.SMTP.Server.Session do
                 options =
                   extra_info
                   |> :binstr.split(<<" ">>)
-                  |> Enum.map(&:binstr.to_upper/1)
+                  |> Enum.map(&String.upcase/1)
 
                 f = fn
                   (_, {:error, message}) -> {:error, message}
@@ -446,12 +448,12 @@ defmodule Mailmaid.SMTP.Server.Session do
                   (<<"SIZE=", size :: binary>>, inner_state) ->
                     case has_extension(extensions, "SIZE") do
                       {true, value} ->
-                        case :erlang.list_to_integer(:erlang.binary_to_list(size)) > :erlang.list_to_integer(value) do
+                        case String.to_integer(:erlang.binary_to_list(size)) > String.to_integer(value) do
                           true ->
                             {:error, ["552 Estimated message length ", size, " exceeds limit of ", value, "\r\n"]}
 
                           false ->
-                            %State{inner_state | envelope: %Envelope{envelope | expectedsize: :erlang.list_to_integer(:erlang.binary_to_list(size))}}
+                            %State{inner_state | envelope: %Envelope{envelope | expectedsize: String.to_integer(:erlang.binary_to_list(size))}}
                         end
 
                       false ->
@@ -507,7 +509,7 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def handle_request({<<"RCPT">>, args}, %{socket: socket, envelope: envelope, module: module, callbackstate: old_callback_state} = state) do
-    case :binstr.strpos(:binstr.to_upper(args), "TO:") do
+    case :binstr.strpos(String.upcase(args), "TO:") do
       1 ->
         address = :binstr.strip(:binstr.substr(args, 4), :left, ?\s)
         case parse_encoded_address(address) do
@@ -522,11 +524,11 @@ defmodule Mailmaid.SMTP.Server.Session do
           {parsed_address, <<>>} ->
             case module.handle_RCPT(parsed_address, old_callback_state) do
               {:ok, callbackstate} ->
-                socket.send(socket, "250 recipient Ok\r\n")
-                {:ok, %State{state | envelope: envelope.to ++ [parsed_address], callbackstate: callbackstate}}
+                :socket.send(socket, "250 recipient Ok\r\n")
+                {:ok, %State{state | envelope: %Envelope{envelope | to: envelope.to ++ [parsed_address]}, callbackstate: callbackstate}}
 
               {:error, message, callbackstate} ->
-                socket.send(socket, [message, "\r\n"])
+                :socket.send(socket, [message, "\r\n"])
                 {:ok, %State{callbackstate: callbackstate}}
             end
 
@@ -744,8 +746,10 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def has_extension(exts, ext) do
-    extension = :string.to_upper(ext)
-    extensions = Enum.map(exts, fn {x, y} -> {:string.to_upper(x), y} end)
+    extension = String.upcase(ext)
+    extensions = Enum.map(exts, fn {x, y} ->
+      {String.upcase(x), y}
+    end)
 
     case :proplists.get_value(extension, extensions) do
       :undefined -> false

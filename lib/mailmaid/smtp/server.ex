@@ -40,27 +40,29 @@ defmodule Mailmaid.SMTP.Server do
       # find this listen_port in our listeners.
       listener =
         listeners
-        |> Enum.filter(&(&1.port == listen_port))
+        |> Enum.find(&(&1.port == listen_port))
 
       {:ok, client_socket} = :socket.handle_inet_async(listener.socket, client_accept_socket, listener.listenoptions)
 
       # New client connected
       # io:format("new client connection.~n", [])
       session_options = [{:hostname, listener.hostname}, {:sessioncount, length(cur_sessions) + 1} | listener.sessionoptions]
-      sessions = case :gen_smtp_server_session.start(client_socket, module, session_options) do
+      sessions = case Mailmaid.SMTP.Server.Session.start(client_socket, module, session_options) do
         {:ok, pid} ->
           Process.link(pid)
           :socket.controlling_process(client_socket, pid)
           cur_sessions ++ [pid]
 
-        _ ->
+        {:error, reason} ->
+          :error_logger.error_msg("Error in session: ~p.~n", [reason])
           cur_sessions
       end
 
       {:noreply, %State{state | sessions: sessions}}
-    catch error ->
-      :error_logger.error_msg("Error in socket acceptor: ~p.~n", [error])
-      {:noreply, state}
+    rescue
+      error in Exception ->
+        :error_logger.error_msg("Error in socket acceptor: ~p.~n", [error])
+        {:noreply, state}
     end
   end
 
