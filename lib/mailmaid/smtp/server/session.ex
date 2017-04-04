@@ -45,18 +45,22 @@ defmodule Mailmaid.SMTP.Server.Session do
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
   @timeout 180000
 
-  def start_link(socket, module, options) do
-    :gen_server.start_link(__MODULE__, [socket, module, options], [])
+  def start_link(socket, module, options, config \\ []) do
+    GenServer.start_link(__MODULE__, [socket, module, options], config)
   end
 
-  def start(socket, module, options) do
-    :gen_server.start(__MODULE__, [socket, module, options], [])
+  def start(socket, module, options, config \\ []) do
+    GenServer.start_link(__MODULE__, [socket, module, options], config)
   end
 
   def init([socket, module, options]) do
     {:ok, {peer_name, _port}} = :socket.peername(socket)
 
-    case module.init(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), :proplists.get_value(:sessioncount, options, 0), peer_name, :proplists.get_value(:callbackoptions, options, [])) do
+    hostname = :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN())
+    sessioncount = :proplists.get_value(:sessioncount, options, 0)
+    callbackoptions = :proplists.get_value(:callbackoptions, options, [])
+
+    case module.init(hostname, sessioncount, peer_name, callbackoptions) do
       {:ok, banner, callbackstate} ->
         :socket.send(socket, ["220 ", banner, "\r\n"])
         :socket.active_once(socket)
@@ -64,10 +68,10 @@ defmodule Mailmaid.SMTP.Server.Session do
         {:ok, %State{socket: socket, module: module, options: options, callbackstate: callbackstate}, @timeout}
 
       {:stop, reason, message} ->
-          :socket.send(socket, [message, "\r\n"])
-          :socket.close(socket)
+        :socket.send(socket, [message, "\r\n"])
+        :socket.close(socket)
 
-          {:stop, reason}
+        {:stop, reason}
 
       :ignore ->
         :socket.close(socket)
@@ -193,11 +197,16 @@ defmodule Mailmaid.SMTP.Server.Session do
     {:noreply, state}
   end
 
+  @spec terminate(reason :: term, state :: State.t) :: {:ok, reason :: term, state :: State.t}
   def terminate(reason, state) do
     if state.socket do
       :socket.close(state.socket)
     end
-    state.module.terminate(reason, state.callbackstate)
+    if state.module do
+      state.module.terminate(reason, state.callbackstate)
+    else
+      {:ok, reason, state}
+    end
   end
 
   def code_change(old_vsn, %{module: module} = state, extra) do
