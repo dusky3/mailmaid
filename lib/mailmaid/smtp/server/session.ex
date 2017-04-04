@@ -299,15 +299,16 @@ defmodule Mailmaid.SMTP.Server.Session do
                 {pos + 1, len, [["250-", e, " ", value, "\r\n"] | acc]}
             end
 
-            extensions2 = case tls do
+            extensions = case tls do
               true -> extensions -- [{"STARTTLS", true}]
               false -> extensions
             end
 
-            {_, _, response} = :lists.foldl(f, {1, length(extensions2), [["250-", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"]]}, extensions2)
-            :socket.send(socket, :lists.reverse(response))
+            hostname = :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN())
+            {_, _, response} = :lists.foldl(f, {1, length(extensions), [["250-", hostname, "\r\n"]]}, extensions)
+            :socket.send(socket, Enum.reverse(response))
 
-            {:ok, %State{state | extensions: extensions2, envelope: %Envelope{}, callbackstate: callbackstate}}
+            {:ok, %State{state | extensions: extensions, envelope: %Envelope{}, callbackstate: callbackstate}}
         end
 
       {:error, message, callbackstate} ->
@@ -322,59 +323,58 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def handle_request({<<"AUTH">>, args}, %{socket: socket, extensions: extensions, envelope: envelope, options: options} = state) do
-    case :binstr.strchr(args, ?\s) do
-      0 ->
-        auth_type = args
-        parameters = false
-
+    {auth_type, parameters} = case :binstr.strchr(args, ?\s) do
+      0 -> {args, false}
       index ->
-        auth_type = :binstr.substr(args, 1, index - 1)
-        parameters = :binstr.strip(:binstr.substr(args, index + 1), :left, ?\s)
+        {:binstr.substr(args, 1, index - 1),
+         :binstr.strip(:binstr.substr(args, index + 1), :left, ?\s)}
     end
 
     case has_extension(extensions, "AUTH") do
       false ->
-        :socket.send(socket, "502 Error: AUTH not implemented")
+        :socket.send(socket, "502 Error: AUTH not implemented\r\n")
         {:ok, state}
 
       {true, available_types} ->
-        types = available_types |> String.split(" ") |> Enum.reject(&(&1 == ""))
+        auth_type = String.upcase(auth_type)
+        types =
+          available_types
+          |> String.split(~r/\s+/, trim: true)
+          |> Enum.map(&String.upcase/1)
 
-        case types |> Enum.member?(String.upcase(auth_type)) do
-          false ->
-            :socket.send(socket, "504 Unrecognized authentication type\r\n")
-            {:ok, state}
+        if Enum.member?(types, auth_type) do
+          case String.upcase(auth_type) do
+            <<"LOGIN">> ->
+              :socket.send(socket, "334 VXNlcm5hbWU6\r\n")
+              {:ok, %State{state | waitingauth: :login, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
 
-          true ->
-            case String.upcase(auth_type) do
-              <<"LOGIN">> ->
-                :socket.send(socket, "334 VXNlcm5hbWU6\r\n")
-                {:ok, %State{waitingauth: :login, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
+            <<"PLAIN">> when parameters != false ->
+              # TODO - duplicated below in handle_request waitingauth PLAIN
+              case :binstr.split(:base64.decode(parameters), <<0>>) do
+                [_identity, username, password] ->
+                  try_auth(:plain, username, password, state)
 
-              <<"PLAIN">> when parameters != false ->
-                # TODO - duplicated below in handle_request waitingauth PLAIN
-                case :binstr.split(:base64.decode(parameters), <<0>>) do
-                  [_identity, username, password] ->
-                    try_auth(:plain, username, password, state)
+                [username, password] ->
+                  try_auth(:plain, username, password, state)
 
-                  [username, password] ->
-                    try_auth(:plain, username, password, state)
+                _ ->
+                  # TODO error
+                  {:ok, state}
+              end
 
-                  _ ->
-                    # TODO error
-                    {:ok, state}
-                end
+            <<"PLAIN">> ->
+              :socket.send(socket, "334\r\n")
+              {:ok, %State{state | waitingauth: :plain, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
 
-              <<"PLAIN">> ->
-                :socket.send(socket, "334\r\n")
-                {:ok, %State{waitingauth: :plain, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
-
-              <<"CRAM-MD5">> ->
-                :crypto.start()
-                string = :smtp_util.get_cram_string(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()))
-                :socket.send(socket, ["334 ", string, "\r\n"])
-                {:ok, %State{waitingauth: :'cram-md5', authdata: :base64.decode(string), envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
-            end
+            <<"CRAM-MD5">> ->
+              :crypto.start()
+              string = :smtp_util.get_cram_string(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()))
+              :socket.send(socket, ["334 ", string, "\r\n"])
+              {:ok, %State{state | waitingauth: :'cram-md5', authdata: :base64.decode(string), envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
+          end
+        else
+          :socket.send(socket, "504 Unrecognized authentication type\r\n")
+          {:ok, state}
         end
     end
   end

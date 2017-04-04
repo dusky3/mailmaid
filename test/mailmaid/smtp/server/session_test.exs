@@ -3,6 +3,50 @@ defmodule Mailmaid.SMTP.Server.SessionTest do
   alias Mailmaid.SMTP.Server.Session
   doctest Session
 
+  def await_socket do
+    receive do
+      {:tcp, csock, packet} ->
+        :socket.active_once(csock)
+        {csock, packet}
+    end
+  end
+
+  def send_and_wait(socket, payload) do
+    :socket.send(socket, payload)
+    await_socket()
+  end
+
+  def wait_for_auth_lines do
+    foo = fn f, acc ->
+      receive do
+        {:tcp, csock, raw_packet} ->
+          case {:tcp, csock, "#{raw_packet}"} do
+            {:tcp, csock, "250-AUTH" <> _packet} ->
+              :socket.active_once(csock)
+              f.(f, true)
+
+            {:tcp, csock, "250-" <> _packet} ->
+              :socket.active_once(csock)
+              f.(f, acc)
+
+            {:tcp, csock, "250 AUTH" <> _packet} ->
+              :socket.active_once(csock)
+              true
+
+            {:tcp, csock, "250 " <> _packet} ->
+              :socket.active_once(csock)
+              acc
+
+            {:tcp, csock, _} ->
+              :socket.active_once(csock)
+              :error
+          end
+      end
+    end
+
+    foo.(foo, false)
+  end
+
   describe "parse_encoded_address" do
     test "Valid addresses should parse" do
       assert {<<"God@heaven.af.mil">>, <<>>} == Session.parse_encoded_address(<<"<God@heaven.af.mil>">>)
@@ -79,8 +123,142 @@ defmodule Mailmaid.SMTP.Server.SessionTest do
     end
   end
 
-  describe "stray newline test" do
+  describe "Auth" do
+    setup do
+      parent = self()
 
+      spawn_link(fn ->
+        {:ok, listen_sock} = :socket.listen(:tcp, 9876, [:binary])
+        {:ok, x} = :socket.accept(listen_sock)
+
+        :socket.controlling_process(x, parent)
+
+        send(parent, x)
+      end)
+      {:ok, csock} = :socket.connect(:tcp, 'localhost', 9876)
+      {:ok, ssock} = receive do
+        ssock when is_port(ssock) -> {:ok, ssock}
+      end
+
+      {:ok, pid} = Session.start(ssock, Mailmaid.SMTP.ServerExample, [hostname: "localhost", sessioncount: 1, callbackoptions: [auth: true]])
+      :socket.controlling_process(ssock, pid)
+      on_exit fn ->
+        :socket.close(csock)
+      end
+      %{socket: csock, pid: pid}
+    end
+
+    test "EHLO response includes AUTH", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {_csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+    end
+
+    test "AUTH before EHLO is error", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {_csock, packet} = send_and_wait(csock, "AUTH CRAZY\r\n")
+
+      assert "503 " <> _ = "#{packet}"
+    end
+
+    test "Unknown authentication type", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+
+      {_csock, packet} = send_and_wait(csock, "AUTH CRAZY\r\n")
+
+      assert "504 Unrecognized authentication type\r\n" = "#{packet}"
+    end
+
+    test "A successful AUTH PLAIN", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH PLAIN\r\n")
+      assert "334\r\n" = "#{packet}"
+
+      str = "\0username\0PaSSw0rd" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, [str, "\r\n"])
+
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+
+    test "A successful AUTH PLAIN with an identity", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH PLAIN\r\n")
+      assert "334\r\n" = "#{packet}"
+
+      str = "username\0username\0PaSSw0rd" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, [str, "\r\n"])
+
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+
+    test "A successful immediate AUTH PLAIN", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+
+      str = "\0username\0PaSSw0rd" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, ["AUTH PLAIN ", str, "\r\n"])
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+
+    test "A successful immediate AUTH PLAIN with an identity", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+
+      str = "username\0username\0PaSSw0rd" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, ["AUTH PLAIN ", str, "\r\n"])
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+  end
+
+  describe "stray newline test" do
     test "Error out by default" do
       assert <<"foo">> == Session.check_bare_crlf(<<"foo">>, <<>>, false, 0)
       assert :error == Session.check_bare_crlf(<<"foo\n">>, <<>>, false, 0)
