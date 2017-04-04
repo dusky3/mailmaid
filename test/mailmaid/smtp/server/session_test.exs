@@ -256,6 +256,22 @@ defmodule Mailmaid.SMTP.Server.SessionTest do
       {csock, packet} = send_and_wait(csock, ["AUTH PLAIN ", str, "\r\n"])
       assert "235 Authentication successful.\r\n" == "#{packet}"
     end
+
+    test "An unsuccessful immediate AUTH PLAIN", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+
+      str = "username\0username\0PaSSw0rd2" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, ["AUTH PLAIN ", str, "\r\n"])
+      assert "535 Authentication failed.\r\n" == "#{packet}"
+    end
   end
 
   describe "stray newline test" do
