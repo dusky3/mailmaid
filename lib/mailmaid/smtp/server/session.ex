@@ -194,7 +194,9 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def terminate(reason, state) do
-    :socket.close(state.socket)
+    if state.socket do
+      :socket.close(state.socket)
+    end
     state.module.terminate(reason, state.callbackstate)
   end
 
