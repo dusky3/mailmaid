@@ -59,4 +59,23 @@ defmodule Mailmaid.SMTP.Server.SessionTest do
     end
   end
 
+  describe "parse_request" do
+    test "Parsing normal SMTP requests" do
+      assert {<<"HELO">>, <<>>} == Session.parse_request(<<"HELO\r\n">>)
+      assert {<<"EHLO">>, <<"hell.af.mil">>} == Session.parse_request(<<"EHLO hell.af.mil\r\n">>)
+      assert {<<"MAIL">>, <<"FROM:God@heaven.af.mil">>} == Session.parse_request(<<"MAIL FROM:God@heaven.af.mil">>)
+    end
+
+    test "Verbs should be uppercased" do
+      assert {<<"HELO">>, <<"hell.af.mil">>} == Session.parse_request(<<"helo hell.af.mil">>)
+    end
+
+    test "Leading and trailing spaces are removed" do
+      assert {<<"HELO">>, <<"hell.af.mil">>} == Session.parse_request(<<" helo   hell.af.mil           ">>)
+    end
+
+    test "Blank lines are blank" do
+      assert {<<>>, <<>>} == Session.parse_request(<<"">>)
+    end
+  end
 end
