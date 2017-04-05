@@ -368,7 +368,8 @@ defmodule Mailmaid.SMTP.Server.Session do
 
             <<"CRAM-MD5">> ->
               :crypto.start()
-              string = :smtp_util.get_cram_string(:proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()))
+              hostname = :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN())
+              string = :smtp_util.get_cram_string(hostname)
               :socket.send(socket, ["334 ", string, "\r\n"])
               {:ok, %State{state | waitingauth: :'cram-md5', authdata: :base64.decode(string), envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
           end
@@ -380,13 +381,16 @@ defmodule Mailmaid.SMTP.Server.Session do
   end
 
   def handle_request({username64, <<>>}, %{waitingauth: :'cram-md5', envelope: %{auth: {<<>>, <<>>}}, authdata: authdata} = state) do
-    case :binstr.split(:base64.decode(username64), <<" ">>) do
-      [username, digest] ->
-        try_auth(:'cram-md5', username, {digest, authdata}, %State{state | authdata: nil})
+    with {:ok, pair} <- Base.decode64(username64) do
+      case String.split(pair, " ") do
+        [username, digest] ->
+          try_auth(:'cram-md5', username, {digest, authdata}, %State{state | authdata: nil})
 
-      _ ->
-        # TODO: error
-        {:ok, %State{waitingauth: false, authdata: nil}}
+        _ ->
+          :io.format("CRAM-MD5 Auth error~n")
+          # TODO: error
+          {:ok, %State{state | waitingauth: false, authdata: nil}}
+      end
     end
   end
 

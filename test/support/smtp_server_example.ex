@@ -100,6 +100,16 @@ defmodule Mailmaid.SMTP.ServerExample do
     #reference = :lists.flatten([:io_lib.format("~2.16.0b", [x])])
   end
 
+  def handle_RSET(state), do: state
+
+  def handle_VRFY(<<"someuser">>, state) do
+    {:ok, "someuser@#{:smtp_util.guess_FQDN()}", state}
+  end
+
+  def handle_VRFY(_address, state) do
+    {:error, "252 VRFY disabled by policy, just send some mail", state}
+  end
+
   def handle_other(verb, _args, state) do
     {["500 Error: command not recognized : '", verb, "'"], state}
   end
@@ -110,11 +120,8 @@ defmodule Mailmaid.SMTP.ServerExample do
 
   def handle_AUTH(:"cram-md5", <<"username">>, {digest, seed}, state) do
     case :smtp_util.compute_cram_digest(<<"PaSSw0rd">>, seed) do
-      digest ->
-        {:ok, state}
-
-      _ ->
-        :error
+      ^digest -> {:ok, state}
+      _ -> :error
     end
   end
 

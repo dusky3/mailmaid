@@ -1,3 +1,5 @@
+require Base
+
 defmodule Mailmaid.SMTP.Server.SessionTest do
   use ExUnit.Case
   alias Mailmaid.SMTP.Server.Session
@@ -270,6 +272,119 @@ defmodule Mailmaid.SMTP.Server.SessionTest do
 
       str = "username\0username\0PaSSw0rd2" |> :base64.encode()
       {csock, packet} = send_and_wait(csock, ["AUTH PLAIN ", str, "\r\n"])
+      assert "535 Authentication failed.\r\n" == "#{packet}"
+    end
+
+    test "An unsuccessful AUTH PLAIN", %{socket: csock}  do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH PLAIN\r\n")
+      assert "334\r\n" = "#{packet}"
+
+      str = "\0username\0NotThePassword" |> :base64.encode()
+      {csock, packet} = send_and_wait(csock, [str, "\r\n"])
+
+      assert "535 Authentication failed.\r\n" == "#{packet}"
+    end
+
+    test "A successful AUTH LOGIN", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH LOGIN\r\n")
+
+      assert "334 VXNlcm5hbWU6\r\n" = "#{packet}"
+
+      ustr = :base64.encode("username")
+      {csock, packet} = send_and_wait(csock, [ustr, "\r\n"])
+
+      assert "334 UGFzc3dvcmQ6\r\n" = "#{packet}"
+      pstr = :base64.encode("PaSSw0rd")
+      {csock, packet} = send_and_wait(csock, [pstr, "\r\n"])
+
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+
+    test "An unsuccessful AUTH LOGIN", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH LOGIN\r\n")
+
+      assert "334 VXNlcm5hbWU6\r\n" = "#{packet}"
+
+      ustr = :base64.encode("username2")
+      {csock, packet} = send_and_wait(csock, [ustr, "\r\n"])
+
+      assert "334 UGFzc3dvcmQ6\r\n" = "#{packet}"
+      pstr = :base64.encode("PaSSw0rd")
+      {csock, packet} = send_and_wait(csock, [pstr, "\r\n"])
+
+      assert "535 Authentication failed.\r\n" == "#{packet}"
+    end
+
+    test "A successful AUTH CRAM-MD5", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH CRAM-MD5\r\n")
+
+      assert "334 " <> _ = "#{packet}"
+
+      ["334", seed64] = "#{packet}" |> String.trim_trailing("\r\n") |> String.split(" ")
+      {:ok, seed} = Base.decode64(seed64)
+      digest = :smtp_util.compute_cram_digest("PaSSw0rd", seed)
+      str = "username #{digest}" |> :base64.encode()
+
+      {csock, packet} = send_and_wait(csock, [str, "\r\n"])
+      assert "235 Authentication successful.\r\n" == "#{packet}"
+    end
+
+    test "An unsuccessful AUTH CRAM-MD5", %{socket: csock} do
+      :socket.active_once(csock)
+
+      {csock, packet} = await_socket()
+      assert "220 localhost" <> _stuff = "#{packet}"
+
+      {csock, packet} = send_and_wait(csock, "EHLO somehost.com\r\n")
+      assert "250-localhost\r\n" = "#{packet}"
+
+      assert true == wait_for_auth_lines()
+      {csock, packet} = send_and_wait(csock, "AUTH CRAM-MD5\r\n")
+
+      assert "334 " <> _ = "#{packet}"
+
+      ["334", seed64] = "#{packet}" |> String.trim_trailing("\r\n") |> String.split(" ")
+      {:ok, seed} = Base.decode64(seed64)
+      digest = :smtp_util.compute_cram_digest("Passw0rd", seed)
+      str = "username #{digest}" |> :base64.encode()
+
+      {csock, packet} = send_and_wait(csock, [str, "\r\n"])
       assert "535 Authentication failed.\r\n" == "#{packet}"
     end
   end
