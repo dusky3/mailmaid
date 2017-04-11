@@ -5,19 +5,28 @@ defmodule Mailmaid.SMTP.Client do
     auth: :if_available,
     hostname: :smtp_util.guess_FQDN(),
     retries: 1
-  ]
+  ] |> Enum.sort()
 
   @auth_preference ~w[CRAM-MD5 LOGIN PLAIN]
 
   @timeout 1_200_000
   #@timeout 10_000
 
+  def process_options(options) do
+    options =
+      options
+      |> Mailmaid.SMTP.URI.process_mailer_config()
+      |> Enum.sort()
+
+    Keyword.merge(@default_options, options)
+  end
+
   def send(email, options) do
     send(email, options, nil)
   end
 
   def send(email, options, callback) do
-    new_options = :lists.ukeymerge(1, :lists.sort(options), :lists.sort(@default_options))
+    new_options = process_options(options)
     case check_options(new_options) do
       :ok when is_function(callback) ->
         spawn(fn ->
@@ -51,7 +60,7 @@ defmodule Mailmaid.SMTP.Client do
   end
 
   def send_blocking(email, options) do
-    new_options = :lists.ukeymerge(1, :lists.sort(options), :lists.sort(@default_options))
+    new_options = process_options(options)
 
     case check_options(new_options) do
       :ok -> send_it(email, new_options)
@@ -128,7 +137,7 @@ defmodule Mailmaid.SMTP.Client do
 
   def try_next_host({failure_type, message}, [{_distance, host} | _tail] = hosts, email, options, retry_list) do
     retries = :proplists.get_value(:retries, options)
-    retry_count = :proplists.get_value(Host, retry_list)
+    retry_count = :proplists.get_value(host, retry_list)
 
     case fetch_next_host(retries, retry_count, hosts, retry_list) do
       {[], _new_retry_list} ->
@@ -152,7 +161,7 @@ defmodule Mailmaid.SMTP.Client do
   end
 
   def fetch_next_host(_retries, _retry_count, [{distance, host} | tail], retry_list) do
-    {tail ++ [{distance, host}], :lists.keydelete(Host, 1, retry_list) ++ [{host, 1}]}
+    {tail ++ [{distance, host}], :lists.keydelete(host, 1, retry_list) ++ [{host, 1}]}
   end
 
   def do_smtp_session(host, email, options) do
