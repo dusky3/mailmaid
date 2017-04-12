@@ -2,9 +2,8 @@ defmodule Mailmaid.SMTP.URI do
   @moduledoc """
   Handles special uris in mailer config
   """
-
-  def user_credentials_from_uri(%{userinfo: ""} = _uri), do: nil
-  def user_credentials_from_uri(%{userinfo: userinfo} = _uri) do
+  def user_credentials_from_uri(%{userinfo: u} = _uri) when is_nil(u) or u == "", do: nil
+  def user_credentials_from_uri(%{userinfo: userinfo} = _uri) when is_binary(userinfo) do
     case String.split(userinfo, ":") do
       [username, password] ->
         {username, password}
