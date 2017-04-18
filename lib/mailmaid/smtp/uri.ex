@@ -14,7 +14,9 @@ defmodule Mailmaid.SMTP.URI do
   end
 
   def determine_tls_from_scheme("smtps"), do: :always
+  def determine_tls_from_scheme("mm4"), do: :always
   def determine_tls_from_scheme("smtp+s"), do: :if_available
+  def determine_tls_from_scheme("mm4+s"), do: :if_available
   def determine_tls_from_scheme(_other), do: :never
 
   @spec update_mailer_config_from_uri(uri :: URI.t, config :: Keyword.t) :: Keyword.t
