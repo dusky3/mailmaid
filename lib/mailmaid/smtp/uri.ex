@@ -14,8 +14,8 @@ defmodule Mailmaid.SMTP.URI do
   end
 
   def determine_tls_from_scheme("smtps"), do: :always
-  def determine_tls_from_scheme("mm4"), do: :always
   def determine_tls_from_scheme("smtp+s"), do: :if_available
+  def determine_tls_from_scheme("mm4s"), do: :always
   def determine_tls_from_scheme("mm4+s"), do: :if_available
   def determine_tls_from_scheme(_other), do: :never
 
@@ -25,6 +25,7 @@ defmodule Mailmaid.SMTP.URI do
     case user_credentials_from_uri(uri) do
       {username, password} ->
         [
+          {:scheme, uri.scheme},
           {:relay, uri.host},
           {:port, uri.port},
           {:username, username},
@@ -36,6 +37,7 @@ defmodule Mailmaid.SMTP.URI do
 
       nil ->
         [
+          {:scheme, uri.scheme},
           {:relay, uri.host},
           {:port, uri.port},
           {:tls, tls},
