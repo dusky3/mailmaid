@@ -346,7 +346,12 @@ defmodule Mailmaid.SMTP.Server.Session do
           case String.upcase(auth_type) do
             <<"LOGIN">> ->
               :socket.send(socket, "334 VXNlcm5hbWU6\r\n")
-              {:ok, %State{state | waitingauth: :login, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}}
+              {:ok, %State{state |
+                waitingauth: :login,
+                envelope: %Envelope{envelope |
+                  auth: {<<>>, <<>>}
+                }
+              }}
 
             <<"PLAIN">> when parameters != false ->
               # TODO - duplicated below in handle_request waitingauth PLAIN
@@ -413,7 +418,12 @@ defmodule Mailmaid.SMTP.Server.Session do
     username = :base64.decode(username64)
 
     :socket.send(socket, "334 UGFzc3dvcmQ6\r\n")
-    new_state = %State{state | envelope: %Envelope{envelope | auth: {username, <<>>}}}
+    new_state = %State{state |
+      envelope: %Envelope{
+        envelope |
+        auth: {username, <<>>}
+      }
+    }
 
     {:ok, new_state}
   end
@@ -468,7 +478,11 @@ defmodule Mailmaid.SMTP.Server.Session do
                             {:error, ["552 Estimated message length ", size, " exceeds limit of ", value, "\r\n"]}
 
                           false ->
-                            %State{inner_state | envelope: %Envelope{envelope | expectedsize: String.to_integer(:erlang.binary_to_list(size))}}
+                            %State{inner_state |
+                              envelope: %Envelope{envelope |
+                                expectedsize: String.to_integer(:erlang.binary_to_list(size))
+                              }
+                            }
                         end
 
                       false ->
@@ -500,11 +514,17 @@ defmodule Mailmaid.SMTP.Server.Session do
                     case module.handle_MAIL(parsed_address, state.callbackstate) do
                       {:ok, callbackstate} ->
                         :socket.send(socket, "250 sender Ok\r\n")
-                        {:ok, %State{state | envelope: %Envelope{envelope | from: parsed_address}, callbackstate: callbackstate}}
+                        {:ok, %State{state |
+                          envelope: %Envelope{envelope |
+                            from: parsed_address
+                          },
+                          callbackstate: callbackstate}
+                        }
 
                       {:error, message, callbackstate} ->
                         :socket.send(socket, [message, "\r\n"])
-                        {:ok, %State{new_state | callbackstate: callbackstate}}
+                        {:ok, %State{new_state |
+                          callbackstate: callbackstate}}
                     end
                 end
             end
