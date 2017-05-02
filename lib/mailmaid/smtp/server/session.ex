@@ -795,22 +795,20 @@ defmodule Mailmaid.SMTP.Server.Session do
   def try_auth(auth_type, username, credential, %{module: module, socket: socket, envelope: envelope, callbackstate: old_callback_state} = state) do
     new_state = %State{state | waitingauth: false, envelope: %Envelope{envelope | auth: {<<>>, <<>>}}}
 
-    case :erlang.function_exported(module, :handle_AUTH, 4) do
-      true ->
-        case module.handle_AUTH(auth_type, username, credential, old_callback_state) do
-          {:ok, callbackstate} ->
-            :socket.send(socket, "235 Authentication successful.\r\n")
-            {:ok, %State{state | callbackstate: callbackstate, envelope: %Envelope{envelope | auth: {username, credential}}}}
+    if :erlang.function_exported(module, :handle_AUTH, 4) do
+      case module.handle_AUTH(auth_type, username, credential, old_callback_state) do
+        {:ok, callbackstate} ->
+          :socket.send(socket, "235 Authentication successful.\r\n")
+          {:ok, %State{state | callbackstate: callbackstate, envelope: %Envelope{envelope | auth: {username, credential}}}}
 
-          _ ->
-            :socket.send(socket, "535 Authentication failed.\r\n")
-            {:ok, new_state}
-        end
-
-      false ->
-        :io.format("Please define handle_AUTH/4 in your server module or remove AUTH from your module extensions~n")
-        :socket.send(socket, "535 authentication failed (#5.7.1)\r\n")
-        {:ok, new_state}
+        _ ->
+          :socket.send(socket, "535 Authentication failed.\r\n")
+          {:ok, new_state}
+      end
+    else
+      :io.format("Please define handle_AUTH/4 in your server module or remove AUTH from your module extensions~n")
+      :socket.send(socket, "535 authentication failed (#5.7.1)\r\n")
+      {:ok, new_state}
     end
   end
 

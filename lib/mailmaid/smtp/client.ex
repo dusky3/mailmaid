@@ -30,14 +30,14 @@ defmodule Mailmaid.SMTP.Client do
     case check_options(new_options) do
       :ok when is_function(callback) ->
         spawn(fn ->
-          :erlang.process_flag(:trap_exit, true)
+          Process.flag(:trap_exit, true)
 
-          pid = spawn_link(fn ->
+          _pid = spawn_link(fn ->
             send_it_nonblock(email, new_options, callback)
           end)
 
           receive do
-            {:EXIT, pid, reason} ->
+            {:EXIT, _pid, reason} ->
               case reason do
                 x when x == :normal or x == :shutdown ->
                   :ok
@@ -49,11 +49,9 @@ defmodule Mailmaid.SMTP.Client do
         end)
 
       :ok ->
-        pid = spawn_link(fn ->
+        {:ok, spawn_link(fn ->
           send_it_nonblock(email, new_options, callback)
-        end)
-
-        {:ok, pid}
+        end)}
 
       {:error, _reason} = err -> err
     end
