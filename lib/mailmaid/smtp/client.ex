@@ -169,17 +169,22 @@ defmodule Mailmaid.SMTP.Client do
     {socket, extensions} = try_STARTTLS(socket, options, extensions)
 
     _authed = try_AUTH(socket, options, :proplists.get_value(<<"AUTH">>, extensions))
-    receipt = try_sending_it(email, socket, extensions)
-    quit(socket)
-    receipt
+    try do
+      try_sending_it(List.wrap(email), socket, extensions)
+    after
+      quit(socket)
+    end
   end
 
   require Logger
 
-  def try_sending_it({from, to, body}, socket, extensions) do
+  def try_sending_it(emails, _socket, _extensions, acc \\ [])
+  def try_sending_it([], _socket, _extensions, acc), do: Enum.reverse(acc)
+  def try_sending_it([{from, to, body} | rest], socket, extensions, acc) do
     try_MAIL_FROM(from, socket, extensions)
     try_RCPT_TO(to, socket, extensions)
-    try_DATA(body, socket, extensions)
+    receipt = try_DATA(body, socket, extensions)
+    try_sending_it(rest, socket, extensions, [receipt | acc])
   end
 
   defp wrap_address("<" <> _rest = str), do: str
