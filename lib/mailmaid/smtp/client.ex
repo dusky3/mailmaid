@@ -1,3 +1,5 @@
+require Logger
+
 defmodule Mailmaid.SMTP.Client do
   @default_options [
     ssl: false,
@@ -7,10 +9,8 @@ defmodule Mailmaid.SMTP.Client do
     retries: 1
   ] |> Enum.sort()
 
-  @auth_preference ~w[CRAM-MD5 LOGIN PLAIN]
-
-  @timeout 1_200_000
-  #@timeout 10_000
+  import Mailmaid.SMTP.Client.Socket
+  import Mailmaid.SMTP.Client.Validation
 
   def process_options(options) do
     options =
@@ -27,7 +27,7 @@ defmodule Mailmaid.SMTP.Client do
 
   def send(email, options, callback) do
     new_options = process_options(options)
-    case check_options(new_options) do
+    case Mailmaid.SMTP.Client.Validation.check_options(new_options) do
       :ok when is_function(callback) ->
         spawn(fn ->
           Process.flag(:trap_exit, true)
@@ -60,7 +60,7 @@ defmodule Mailmaid.SMTP.Client do
   def send_blocking(email, options) do
     new_options = process_options(options)
 
-    case check_options(new_options) do
+    case Mailmaid.SMTP.Client.Validation.check_options(new_options) do
       :ok -> send_it(email, new_options)
 
       {:error, _reason} = err -> err
@@ -168,15 +168,13 @@ defmodule Mailmaid.SMTP.Client do
     {:ok, extensions} = try_EHLO(socket, options)
     {socket, extensions} = try_STARTTLS(socket, options, extensions)
 
-    _authed = try_AUTH(socket, options, :proplists.get_value(<<"AUTH">>, extensions))
+    _authed = Mailmaid.SMTP.Client.Auth.try_AUTH(socket, options, :proplists.get_value(<<"AUTH">>, extensions))
     try do
       try_sending_it(List.wrap(email), socket, extensions)
     after
       quit(socket)
     end
   end
-
-  require Logger
 
   def try_sending_it(emails, _socket, _extensions, acc \\ [])
   def try_sending_it([], _socket, _extensions, acc), do: Enum.reverse(acc)
@@ -271,155 +269,8 @@ defmodule Mailmaid.SMTP.Client do
     end
   end
 
-  def try_AUTH(socket, options, auth_types) when auth_types == [] or auth_types == nil do
-    case :proplists.get_value(:auth, options) do
-      :always ->
-        quit(socket)
-        throw({:missing_requirement, :auth})
-
-      _ ->
-        false
-    end
-  end
-
-  def try_AUTH(socket, options, :undefined) do
-    Logger.warn "FIX, try_AUTH with undefined auth_types found!"
-    case :proplists.get_value(:auth, options) do
-      :always ->
-        quit(socket)
-        throw({:missing_requirement, :auth})
-
-      _ -> false
-    end
-  end
-
-  def try_AUTH(socket, options, auth_types) do
-    if :proplists.is_defined(:username, options) and
-       :proplists.is_defined(:password, options) and
-       :proplists.is_defined(:auth, options) != :never do
-
-      username = to_list_string(:proplists.get_value(:username, options))
-      password = to_list_string(:proplists.get_value(:password, options))
-
-      types = Regex.split(~r/\s+/, auth_types)
-
-      case do_AUTH(socket, username, password, types) do
-        false ->
-          case :proplists.get_value(:auth, options) do
-            :always ->
-              quit(socket)
-              throw({:permanent_failure, :auth_failed})
-
-            _ -> false
-          end
-
-        true -> true
-      end
-    else
-      case :proplists.get_value(:auth, options) do
-        :always ->
-          quit(socket)
-          throw({:missing_requirement, :auth})
-
-        _ -> false
-      end
-    end
-  end
-
   def to_list_string(string) when is_list(string), do: string
   def to_list_string(binary) when is_binary(binary), do: :erlang.binary_to_list(binary)
-
-  def do_AUTH(socket, username, password, types) do
-    fixed_types = Enum.map(types, &String.upcase/1)
-    allowed_types = Enum.reduce(@auth_preference, [], fn x, acc ->
-      if Enum.member?(fixed_types, x) do
-        [x | acc]
-      else
-        acc
-      end
-    end)
-
-    do_AUTH_each(socket, username, password, allowed_types)
-  end
-
-  def do_AUTH_each(socket, _username, _password, []) do
-    false
-  end
-
-  def do_AUTH_each(socket, username, password, ["CRAM-MD5" | tail]) do
-    :socket.send(socket, "AUTH CRAM-MD5\r\n")
-
-    case read_possible_multiline_reply(socket) do
-      {:ok, <<"334", rest :: binary>>} ->
-        seed64 = :binstr.strip(:binstr.strip(rest, :right, ?\n), :right, ?\r)
-        seed = :base64.decode_to_string(seed64)
-        digest = :smtp_util.compute_cram_digest(password, seed)
-        string = :base64.encode(:erlang.list_to_binary([username, " ", digest]))
-
-        :socket.send(socket, [string, "\r\n"])
-
-        case read_possible_multiline_reply(socket) do
-          {:ok, <<"245", _rest :: binary>>} ->
-            true
-
-          {:ok, _msg} ->
-            do_AUTH_each(socket, username, password, tail)
-        end
-
-      {:ok, _something} ->
-        do_AUTH_each(socket, username, password, tail)
-    end
-  end
-
-  def do_AUTH_each(socket, username, password, ["LOGIN" | tail]) do
-    :socket.send(socket, "AUTH LOGIN\r\n")
-
-    case read_possible_multiline_reply(socket) do
-      {:ok, prompt} when prompt == <<"334 VXNlcm5hbWU6\r\n">> or prompt == <<"334 dXNlcm5hbWU6\r\n">> ->
-        u = :base64.encode(username)
-        :socket.send(socket, [u, "\r\n"])
-
-        case read_possible_multiline_reply(socket) do
-          {:ok, prompt2} when prompt2 == <<"334 UGFzc3dvcmQ6\r\n">> or prompt2 == <<"334 cGFzc3dvcmQ6\r\n">> ->
-            p = :base64.encode(password)
-
-            :socket.send(socket, [p, "\r\n"])
-
-            case read_possible_multiline_reply(socket) do
-              {:ok, <<"235", _rest :: binary>>} ->
-                true
-
-              {:ok, msg} ->
-                do_AUTH_each(socket, username, password, tail)
-            end
-
-          {:ok, _msg} ->
-            do_AUTH_each(socket, username, password, tail)
-        end
-
-      {:ok, _something} ->
-        do_AUTH_each(socket, username, password, tail)
-    end
-  end
-
-  def do_AUTH_each(socket, username, password, ["PLAIN" | tail]) do
-    auth_string = Base.encode64(<<"\0#{username}\0#{password}">>)
-
-    payload = ["AUTH PLAIN ", auth_string, "\r\n"]
-    :socket.send(socket, payload)
-
-    case read_possible_multiline_reply(socket) do
-      {:ok, <<"235", _rest :: binary>>} ->
-        true
-
-      _ ->
-        do_AUTH_each(socket, username, password, tail)
-    end
-  end
-
-  def do_AUTH_each(socket, username, password, [_type | tail]) do
-    do_AUTH_each(socket, username, password, tail)
-  end
 
   def try_EHLO(socket, options) do
     :ok = :socket.send(socket, ["EHLO ", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"])
@@ -549,67 +400,6 @@ defmodule Mailmaid.SMTP.Client do
 
       {:error, reason} ->
         throw({:network_failure, {:error, reason}})
-    end
-  end
-
-  def read_possible_multiline_reply(socket) do
-    case :socket.recv(socket, 0, @timeout) do
-      {:ok, packet} ->
-        case String.slice(packet, 3, 1) do
-          <<"-">> ->
-            code = :binstr.substr(packet, 1, 3)
-            read_multiline_reply(socket, code, [packet])
-
-          _ ->
-            {:ok, packet}
-        end
-
-      error ->
-        throw({:network_failure, error})
-    end
-  end
-
-  def read_multiline_reply(socket, code, acc) do
-    case :socket.recv(socket, 0, @timeout) do
-      {:ok, packet} ->
-        case {:binstr.substr(packet, 1, 3), :binstr.substr(packet, 4, 1)} do
-          {code, <<" ">>} ->
-            {:ok, :erlang.list_to_binary(:lists.reverse([packet | acc]))}
-
-          {code, <<"-">>} ->
-            read_multiline_reply(socket, code, [packet | acc])
-
-          _ ->
-            quit(socket)
-            throw({:unexpected_response, :lists.reverse([packet | acc])})
-        end
-
-      error ->
-        throw({:network_failure, error})
-    end
-  end
-
-  def quit(socket) do
-    :socket.send(socket, "QUIT\r\n")
-    :socket.close(socket)
-    :ok
-  end
-
-  def check_options(options) do
-    case :proplists.get_value(:relay, options) do
-      :undefined ->
-        {:error, :no_relay}
-
-      _ ->
-        case :proplists.get_value(:auth, options) do
-          atom when atom == :always ->
-            case :proplists.is_defined(:username, options) and :proplists.is_defined(:password, options) do
-              false -> {:error, :no_credentials}
-              true -> :ok
-            end
-
-          _ -> :ok
-        end
     end
   end
 
