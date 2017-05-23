@@ -799,7 +799,16 @@ defmodule Mailmaid.SMTP.Server.Session do
       case module.handle_AUTH(auth_type, username, credential, old_callback_state) do
         {:ok, callbackstate} ->
           :socket.send(socket, "235 Authentication successful.\r\n")
-          {:ok, %State{state | callbackstate: callbackstate, envelope: %Envelope{envelope | auth: {username, credential}}}}
+          {:ok,
+            %State{
+              new_state |
+              callbackstate: callbackstate,
+              envelope: %Envelope{
+                envelope |
+                auth: {username, credential}
+              }
+            }
+          }
 
         _ ->
           :socket.send(socket, "535 Authentication failed.\r\n")
