@@ -473,7 +473,7 @@ defmodule Mailmaid.SMTP.Server.Session do
                   (<<"SIZE=", size :: binary>>, inner_state) ->
                     case has_extension(extensions, "SIZE") do
                       {true, value} ->
-                        case String.to_integer(:erlang.binary_to_list(size)) > String.to_integer(value) do
+                        case String.to_integer(size) > String.to_integer(value) do
                           true ->
                             {:error, ["552 Estimated message length ", size, " exceeds limit of ", value, "\r\n"]}
 
