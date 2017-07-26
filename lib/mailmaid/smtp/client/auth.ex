@@ -16,7 +16,7 @@ defmodule Mailmaid.SMTP.Client.Auth do
     end
   end
 
-  def do_AUTH_each(socket, _username, _password, []) do
+  def do_AUTH_each(_socket, _username, _password, []) do
     false
   end
 
@@ -63,7 +63,7 @@ defmodule Mailmaid.SMTP.Client.Auth do
               {:ok, <<"235", _rest :: binary>>} ->
                 true
 
-              {:ok, msg} ->
+              {:ok, _msg} ->
                 do_AUTH_each(socket, username, password, tail)
             end
 
@@ -97,7 +97,8 @@ defmodule Mailmaid.SMTP.Client.Auth do
 
   def do_AUTH(socket, username, password, types) do
     fixed_types = Enum.map(types, &String.upcase/1)
-    do_AUTH_each(socket, username, password, types)
+    allowed_types = Enum.filter(@auth_preference, &Enum.member?(fixed_types, &1))
+    do_AUTH_each(socket, username, password, allowed_types)
   end
 
   def to_list_string(string) when is_list(string), do: string

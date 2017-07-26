@@ -10,7 +10,6 @@ defmodule Mailmaid.SMTP.Client do
   ] |> Enum.sort()
 
   import Mailmaid.SMTP.Client.Socket
-  import Mailmaid.SMTP.Client.Validation
 
   def process_options(options) do
     options =
@@ -154,7 +153,7 @@ defmodule Mailmaid.SMTP.Client do
     {tail ++ [{distance, host}], :lists.keydelete(host, 1, retry_list) ++ [{host, retry_count + 1}]}
   end
 
-  def fetch_next_host(0, retry_count, [{_distance, host} | tail], retry_list) do
+  def fetch_next_host(0, _retry_count, [{_distance, host} | tail], retry_list) do
     {tail, :lists.keydelete(host, 1, retry_list)}
   end
 
@@ -188,7 +187,7 @@ defmodule Mailmaid.SMTP.Client do
   defp wrap_address("<" <> _rest = str), do: str
   defp wrap_address(str), do: "<#{str}>"
 
-  def try_MAIL_FROM(from, socket, extensions) do
+  def try_MAIL_FROM(from, socket, _extensions) do
     from = wrap_address(from)
     :socket.send(socket, ["MAIL FROM: ", from, "\r\n"])
 
@@ -206,7 +205,7 @@ defmodule Mailmaid.SMTP.Client do
     end
   end
 
-  def try_RCPT_TO([], socket, extensions) do
+  def try_RCPT_TO([], _socket, _extensions) do
     true
   end
 
@@ -237,7 +236,7 @@ defmodule Mailmaid.SMTP.Client do
     try_DATA(body.(), socket, extensions)
   end
 
-  def try_DATA(body, socket, extensions) do
+  def try_DATA(body, socket, _extensions) do
     :socket.send(socket, "DATA\r\n")
 
     case read_possible_multiline_reply(socket) do

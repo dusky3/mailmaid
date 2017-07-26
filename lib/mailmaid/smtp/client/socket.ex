@@ -23,10 +23,10 @@ defmodule Mailmaid.SMTP.Client.Socket do
     case :socket.recv(socket, 0, @timeout) do
       {:ok, packet} ->
         case {:binstr.substr(packet, 1, 3), :binstr.substr(packet, 4, 1)} do
-          {code, <<" ">>} ->
+          {^code, <<" ">>} ->
             {:ok, :erlang.list_to_binary(:lists.reverse([packet | acc]))}
 
-          {code, <<"-">>} ->
+          {^code, <<"-">>} ->
             read_multiline_reply(socket, code, [packet | acc])
 
           _ ->

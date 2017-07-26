@@ -1,13 +1,14 @@
 defmodule Mailmaid.SMTP.Client.Validation do
-  def check_auth_options({_, _}, _options) do
-    :ok
-  end
-
+  @spec check_auth_options({requirement :: atom, term}, term) :: :ok | {:error, term}
   def check_auth_options({:always, _}, options) do
     case :proplists.is_defined(:username, options) and :proplists.is_defined(:password, options) do
       false -> {:error, :no_credentials}
       true -> :ok
     end
+  end
+
+  def check_auth_options({_, _}, _options) do
+    :ok
   end
 
   def check_options(options) do
