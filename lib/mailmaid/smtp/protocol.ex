@@ -32,6 +32,8 @@ defmodule Mailmaid.SMTP.Protocol do
       backlog: []
   end
 
+  alias :ranch, as: Ranch
+
   @maximum_size 10485760
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
   @timeout 180000
@@ -670,7 +672,8 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def init(ref, socket, transport, opts \\ []) do
-    :ok = :ranch.accept_ack(ref)
+    :ok = Ranch.accept_ack(ref)
+
     transport.setopts(socket, [packet: :line])
     state = Enum.into(opts, %{})
     state = struct(State, state)

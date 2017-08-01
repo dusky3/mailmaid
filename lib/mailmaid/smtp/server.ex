@@ -5,6 +5,8 @@ defmodule Mailmaid.SMTP.Server do
     end
   end
 
+  alias :ranch, as: Ranch
+
   def start_link(session_module, [args]) do
     num_acceptors = 256
     transport_opts = [
@@ -17,6 +19,6 @@ defmodule Mailmaid.SMTP.Server do
       session_options: Keyword.get(args, :sessionoptions, []),
       tls: Keyword.get(args, :tls, false),
     ]
-    :ranch.start_listener(session_module, num_acceptors, :ranch_tcp, transport_opts, Mailmaid.SMTP.Protocol, opts)
+    Ranch.start_listener(session_module, num_acceptors, :ranch_tcp, transport_opts, Mailmaid.SMTP.Protocol, opts)
   end
 end
