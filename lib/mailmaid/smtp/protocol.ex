@@ -32,6 +32,9 @@ defmodule Mailmaid.SMTP.Protocol do
       backlog: []
   end
 
+  @moduledoc """
+  Port of gen_smtp using Ranch as the listener handler.
+  """
   alias :ranch, as: Ranch
 
   @maximum_size 10485760

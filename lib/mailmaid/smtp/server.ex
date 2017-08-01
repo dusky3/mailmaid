@@ -5,8 +5,19 @@ defmodule Mailmaid.SMTP.Server do
     end
   end
 
+  @moduledoc """
+  Options
+  """
   alias :ranch, as: Ranch
 
+  @doc """
+  Starts a new SMTP server listener
+
+  Args:
+  * `session_module` - the callback module and name of the listener
+  * `listeners` - a list of keyword lists. For now just wrap the args in a list.
+  """
+  @spec start_link(session_module :: atom, listeners :: list) :: {:ok, pid} | {:error, term}
   def start_link(session_module, [args]) do
     num_acceptors = 256
     transport_opts = [
