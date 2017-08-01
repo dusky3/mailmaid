@@ -109,7 +109,7 @@ defmodule Mailmaid.SMTP.Protocol do
 
       {:error, message, callback_state} ->
         transport.send(socket, [message, "\r\n"])
-        {:ok, %{callback_state: callback_state}}
+        {:ok, %{state | callback_state: callback_state}}
     end
   end
 
@@ -135,7 +135,7 @@ defmodule Mailmaid.SMTP.Protocol do
 
       {:error, message, callback_state} ->
         transport.send(socket, [message, "\r\n"])
-        {:ok, put_in(state.callback_state, callback_state)}
+        {:ok, %{state |callback_state: callback_state}}
     end
   end
 
@@ -367,7 +367,7 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {"RCPT", _}, %{envelope: %{from: nil}} = state) do
-    transport.send(socket, "503 ERROR: send MAIL command first\r\n")
+    transport.send(socket, "503 ERROR: send MAIL first\r\n")
     {:ok, state}
   end
 

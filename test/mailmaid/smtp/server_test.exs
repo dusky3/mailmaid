@@ -445,4 +445,65 @@ defmodule Mailmaid.SMTP.ServerTest do
       end)
     end
   end
+
+  describe "RCPT" do
+    test "will error unless HELO or EHLO is called first" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "RCPT\r\n")
+      end)
+    end
+
+    test "will error unless MAIL is called first" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "503 ERROR: send MAIL first\r\n"} = send_and_wait(socket, transport, "RCPT\r\n")
+      end)
+    end
+
+    test "will error unless RCPT commands has parameters" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+
+        assert {:ok, "501 Syntax Error: RCPT TO:<address>\r\n"} = send_and_wait(socket, transport, "RCPT\r\n")
+      end)
+    end
+
+    test "will error given a RCPT command with parameters, but no address" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+
+        assert {:ok, "501 Bad recipient address syntax\r\n"} = send_and_wait(socket, transport, "RCPT TO:<>\r\n")
+      end)
+    end
+
+    test "will accept a RCPT command with parameters" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "250 Recipient OK\r\n"} = send_and_wait(socket, transport, "RCPT TO:<someone-else@example.com>\r\n")
+      end)
+    end
+
+    test "will accept a RCPT command with parameters, but reject an address" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+
+        assert {:ok, "550 No such recipient\r\n"} = send_and_wait(socket, transport, "RCPT TO:<nobody@example.com>\r\n")
+      end)
+    end
+
+    test "will accept a RCPT command with parameters and extensions" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "250 Recipient OK\r\n"} = send_and_wait(socket, transport, "RCPT TO:<someone-else@example.com> EXT=value\r\n")
+      end)
+    end
+  end
 end
