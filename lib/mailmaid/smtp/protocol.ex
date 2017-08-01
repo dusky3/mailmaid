@@ -48,9 +48,10 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def try_auth(socket, transport, auth_type, username, credential, state) do
+    IO.inspect [:try_auth, auth_type, username, credential]
     {:ok, state} = reset_auth(state)
 
-    if :erlang.function_exported(state.session_module, :handle_AUTH, 4) do
+    if function_exported?(state.session_module, :handle_AUTH, 4) do
       case state.session_module.handle_AUTH(auth_type, username, credential, state.callback_state) do
         {:ok, callback_state} ->
           transport.send(socket, "235 Authentication successful.\r\n")
@@ -129,6 +130,7 @@ defmodule Mailmaid.SMTP.Protocol do
         {:ok, %{state | extensions: [{"SIZE", Integer.to_string(max_size)}], envelope: %Envelope{}, callback_state: callback_state}}
 
       {:ok, callback_state} ->
+        transport.send(socket, ["250 ", state.hostname, "\r\n"])
         {:ok, %{state | callback_state: callback_state, envelope: %Envelope{}}}
 
       {:error, message, callback_state} ->
@@ -228,7 +230,7 @@ defmodule Mailmaid.SMTP.Protocol do
               :crypto.start
               cram_string = :smtp_util.get_cram_string(state.hostname)
               transport.send(socket, ["334 ", cram_string, "\r\n"])
-              {:ok, %{state | waiting_for_auth: :'cram-md5', auth_data: Base64.decode(cram_string), envelope: %{envelope | auth: {<<>>, <<>>}}}}
+              {:ok, %{state | waiting_for_auth: :'cram-md5', auth_data: Base.decode64(cram_string), envelope: %{envelope | auth: {<<>>, <<>>}}}}
           end
         else
           transport.send(socket, "504 Unrecognized authentication type\r\n")
@@ -257,6 +259,7 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {username64, <<>>}, %{waiting_for_auth: :login, envelope: %{auth: {<<>>, <<>>}}} = state) do
+    IO.inspect {:login, :username, username64}
     case Base.decode64(username64) do
       {:ok, username} ->
         transport.send(socket, "334 UGFzc3dvcmQ6\r\n")
@@ -367,7 +370,7 @@ defmodule Mailmaid.SMTP.Protocol do
   def handle(socket, transport, {"RCPT", args}, state) do
     args = String.trim_leading(args)
 
-  case String.upcase(args) do
+    case String.upcase(args) do
       "TO:" <> _ ->
         <<_ :: binary-3, addr :: binary>> = args
         addr = String.trim_leading(addr)
@@ -487,27 +490,12 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
-  def handle_pdu(socket, transport, pdu, state) do
-    pdu =
-      pdu
-      |> String.trim_trailing("\n")
-      |> String.trim_trailing("\r")
-      |> String.trim_trailing("\s")
-      |> String.trim_leading("\s")
-
-    case String.split(pdu, " ", parts: 2) do
-      [cmd, parameters] ->
-        handle(socket, transport, {String.upcase(cmd), String.trim_leading(parameters)}, state)
-
-      [cmd] ->
-        handle(socket, transport, {String.upcase(cmd), ""}, state)
-    end
-  end
-
   defp commit_acc(acc, index, packet, state) do
     string = :binstr.substr(packet, 1, index - 1)
     rest = :binstr.substr(packet, index + 5)
     result = acc |> Enum.reverse() |> Enum.join
+
+    IO.inspect result
 
     {:ok, {result, rest}, state}
   end
@@ -618,13 +606,32 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
+  def handle_pdu(socket, transport, pdu, state) do
+    IO.inspect {:handle_pdu, pdu}
+    pdu =
+      pdu
+      |> String.trim_trailing("\n")
+      |> String.trim_trailing("\r")
+      |> String.trim_trailing("\s")
+      |> String.trim_leading("\s")
+
+    case String.split(pdu, " ", parts: 2) do
+      [cmd, parameters] ->
+        handle(socket, transport, {String.upcase(cmd), String.trim_leading(parameters)}, state)
+
+      [cmd] ->
+        handle(socket, transport, {String.upcase(cmd), ""}, state)
+    end
+  end
+
   def loop(socket, transport, %{backlog: []} = state) do
-    transport.setopts(socket, [packet: :line])
+    IO.inspect :loop
     case transport.recv(socket, 0, @timeout) do
       {:ok, data} ->
         case handle_pdu(socket, transport, data, state) do
           {:ok, %{read_message: true} = state} ->
             state = receive_data(socket, transport, state)
+            transport.setopts(socket, [packet: :line])
             loop socket, transport, state
 
           {:ok, state} -> loop(socket, transport, state)
@@ -638,11 +645,11 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def loop(socket, transport, %{backlog: [packet | packets]} = state) do
-    transport.setopts(socket, [packet: :line])
     state = %{state | backlog: packets}
     case handle_pdu(socket, transport, packet, state) do
       {:ok, %{read_message: true} = state} ->
         state = receive_data(socket, transport, state)
+        transport.setopts(socket, [packet: :line])
         loop socket, transport, state
 
       {:ok, state} -> loop(socket, transport, state)
@@ -656,11 +663,10 @@ defmodule Mailmaid.SMTP.Protocol do
     transport.setopts(socket, [packet: :line])
     state = Enum.into(opts, %{})
     state = struct(State, state)
-    state = put_in(state.hostname, state.hostname || "#{:smtp_util.guess_FQDN()}")
-    # TODO: determine peer name from socket
-    peer_name = {0, 0, 0, 0}
+    state = put_in(state.hostname, "#{state.hostname || :smtp_util.guess_FQDN()}")
+    {:ok, {peer_name, _port}} = transport.peername(socket)
     callbackoptions = Keyword.get(state.session_options, :callbackoptions, [])
-    case state.session_module.init(state.hostname, nil, peer_name, callbackoptions) do
+    case state.session_module.init(state.hostname, 1, peer_name, callbackoptions) do
       {:ok, banner, callback_state} ->
         transport.send(socket, ["220 ", banner, "\r\n"])
         state = put_in(state.callback_state, callback_state)
@@ -669,9 +675,11 @@ defmodule Mailmaid.SMTP.Protocol do
       {:stop, reason, message} ->
         transport.send(socket, [message, "\r\n"])
         :ok = transport.close(socket)
+        exit(:normal)
 
       :ignore ->
         :ok = transport.close(socket)
+        exit(:normal)
     end
   end
 
