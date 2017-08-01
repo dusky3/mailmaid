@@ -57,7 +57,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, data} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
 
         assert true == receive_auth_lines(socket, transport)
       end)
@@ -77,8 +77,93 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, data} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
-        IO.inspect data
+        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+      end)
+    end
+
+    test "will error if not given a hostname" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "501 Syntax Error: HELO hostname\r\n"} = send_and_wait(socket, transport, "HELO\r\n")
+      end)
+    end
+  end
+
+  def perform_successful_login(socket, transport, username, password) do
+    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
+    assert {:ok, "235 Authentication successful.\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
+  end
+
+  def perform_unsuccessful_login(socket, transport, username, password) do
+    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
+    assert {:ok, "535 Authentication failed.\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
+  end
+
+  describe "AUTH" do
+    test "will error if HELO or EHLO is not called first" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "AUTH\r\n")
+      end)
+    end
+
+    test "will accept an HELO before the AUTH" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+      end)
+    end
+
+    test "will accept an EHLO before the AUTH LOGIN and successfully authneticate" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_auth_lines(socket, transport)
+
+        perform_successful_login(socket, transport, "username", "PaSSw0rd")
+      end)
+    end
+
+    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_auth_lines(socket, transport)
+
+        perform_unsuccessful_login(socket, transport, "username", "meh")
+      end)
+    end
+
+    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate because malformed username" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_auth_lines(socket, transport)
+
+        assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+        assert {:ok, "501 Malformed LOGIN username\r\n"} = send_and_wait(socket, transport, "malf roem\r\n")
+      end)
+    end
+
+    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate because malformed password" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_auth_lines(socket, transport)
+
+        assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+        assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64("username")}\r\n")
+        assert {:ok, "501 Malformed LOGIN password\r\n"} = send_and_wait(socket, transport, "pass word\r\n")
       end)
     end
   end

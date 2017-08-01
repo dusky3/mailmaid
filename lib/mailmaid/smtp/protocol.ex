@@ -63,7 +63,7 @@ defmodule Mailmaid.SMTP.Protocol do
       end
     else
       Logger.error("Please define #{state.session_module}.handle_AUTH/4 or remove AUTH from your module extensions.")
-      transport.send(socket, "535 authentication failed (#5.7.1)\r\n")
+      transport.send(socket, "535 Authentication failed (#5.7.1)\r\n")
       {:ok, state}
     end
   end
@@ -79,12 +79,12 @@ defmodule Mailmaid.SMTP.Protocol do
             try_auth(socket, transport, :plain, username, password, state)
 
           _ ->
-            transport.send(socket, "501 Malformed LOGIN\r\n")
+            transport.send(socket, "501 Malformed AUTH PLAIN\r\n")
             {:ok, state}
         end
 
       :error ->
-        transport.send(socket, "501 Malformed LOGIN\r\n")
+        transport.send(socket, "501 Malformed AUTH PLAIN\r\n")
         {:ok, state}
     end
   end
@@ -137,8 +137,6 @@ defmodule Mailmaid.SMTP.Protocol do
         transport.send(socket, [message, "\r\n"])
         {:ok, put_in(state.callback_state, callback_state)}
     end
-
-    {:ok, state}
   end
 
   def handle(socket, transport, {"EHLO", ""}, state) do
@@ -202,7 +200,7 @@ defmodule Mailmaid.SMTP.Protocol do
 
     case get_extension(extensions, "AUTH") do
       nil ->
-        transport.send(socket, "502 ERROR: AUTH is not enabled\r\n")
+        transport.send(socket, "502 ERROR: AUTH not implemented\r\n")
         {:ok, state}
 
       {_, allowed_types} ->
@@ -480,6 +478,7 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {cmd, args}, state) do
+    IO.inspect {:handle_other, cmd, args}
     case state.session_module.handle_other(cmd, args, state.callback_state) do
       {:noreply, callback_state} ->
         {:ok, %{state | callback_state: callback_state}}
@@ -606,26 +605,39 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
-  def handle_pdu(socket, transport, pdu, state) do
-    IO.inspect {:handle_pdu, pdu}
-    pdu =
-      pdu
-      |> String.trim_trailing("\n")
-      |> String.trim_trailing("\r")
-      |> String.trim_trailing("\s")
-      |> String.trim_leading("\s")
+  def trim_pdu(pdu) do
+    pdu
+    |> String.trim_trailing("\n")
+    |> String.trim_trailing("\r")
+    |> String.trim_trailing("\s")
+    |> String.trim_leading("\s")
+  end
+
+  def handle_pdu(socket, transport, pdu, %{waiting_for_auth: nil} = state) do
+    IO.inspect {:handle_pdu, :no_auth, pdu}
+    pdu = trim_pdu(pdu)
 
     case String.split(pdu, " ", parts: 2) do
       [cmd, parameters] ->
         handle(socket, transport, {String.upcase(cmd), String.trim_leading(parameters)}, state)
 
       [cmd] ->
-        handle(socket, transport, {String.upcase(cmd), ""}, state)
+        cmd = case String.upcase(cmd) do
+          "QUIT" -> "QUIT"
+          "DATA" -> "DATA"
+          _ -> cmd
+        end
+        handle(socket, transport, {cmd, ""}, state)
     end
   end
 
+  def handle_pdu(socket, transport, pdu, %{waiting_for_auth: _} = state) do
+    IO.inspect {:handle_pdu, :auth, pdu}
+    pdu = trim_pdu(pdu)
+    handle(socket, transport, {pdu, ""}, state)
+  end
+
   def loop(socket, transport, %{backlog: []} = state) do
-    IO.inspect :loop
     case transport.recv(socket, 0, @timeout) do
       {:ok, data} ->
         case handle_pdu(socket, transport, data, state) do
@@ -634,7 +646,8 @@ defmodule Mailmaid.SMTP.Protocol do
             transport.setopts(socket, [packet: :line])
             loop socket, transport, state
 
-          {:ok, state} -> loop(socket, transport, state)
+          {:ok, state} ->
+            loop(socket, transport, state)
           {:stop, reason, _state} -> end_loop(socket, transport, reason, state)
           {:error, reason} -> end_loop(socket, transport, reason, state)
         end
