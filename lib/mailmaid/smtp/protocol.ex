@@ -48,7 +48,6 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def try_auth(socket, transport, auth_type, username, credential, state) do
-    IO.inspect [:try_auth, auth_type, username, credential]
     {:ok, state} = reset_auth(state)
 
     if function_exported?(state.session_module, :handle_AUTH, 4) do
@@ -258,7 +257,6 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {username64, <<>>}, %{waiting_for_auth: :login, envelope: %{auth: {<<>>, <<>>}}} = state) do
-    IO.inspect {:login, :username, username64}
     case Base.decode64(username64) do
       {:ok, username} ->
         transport.send(socket, "334 UGFzc3dvcmQ6\r\n")
@@ -484,7 +482,6 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {cmd, args}, state) do
-    IO.inspect {:handle_other, cmd, args}
     case state.session_module.handle_other(cmd, args, state.callback_state) do
       {:noreply, callback_state} ->
         {:ok, %{state | callback_state: callback_state}}
@@ -498,9 +495,7 @@ defmodule Mailmaid.SMTP.Protocol do
   defp commit_acc(acc, index, packet, state) do
     string = :binstr.substr(packet, 1, index - 1)
     rest = :binstr.substr(packet, index + 5)
-    result = acc |> Enum.reverse() |> Enum.join
-
-    IO.inspect result
+    result = [string | acc] |> Enum.reverse() |> Enum.join
 
     {:ok, {result, rest}, state}
   end
@@ -620,9 +615,7 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle_pdu(socket, transport, pdu, %{waiting_for_auth: nil} = state) do
-    IO.inspect {:handle_pdu, :no_auth, pdu}
     pdu = trim_pdu(pdu)
-
     case String.split(pdu, " ", parts: 2) do
       [cmd, parameters] ->
         handle(socket, transport, {String.upcase(cmd), String.trim_leading(parameters)}, state)
@@ -638,7 +631,6 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle_pdu(socket, transport, pdu, %{waiting_for_auth: _} = state) do
-    IO.inspect {:handle_pdu, :auth, pdu}
     pdu = trim_pdu(pdu)
     handle(socket, transport, {pdu, ""}, state)
   end

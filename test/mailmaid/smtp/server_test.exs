@@ -506,4 +506,55 @@ defmodule Mailmaid.SMTP.ServerTest do
       end)
     end
   end
+
+  describe "DATA" do
+    test "will error unless HELO or EHLO is called first" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
+      end)
+    end
+
+    test "will error unless MAIL is called first" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "503 ERROR: need MAIL command\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
+      end)
+    end
+
+    test "will error unless RCPT is called first" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "503 ERROR: need RCPT command\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
+      end)
+    end
+
+    test "will start reading data" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "250 Recipient OK\r\n"} = send_and_wait(socket, transport, "RCPT TO:<someone-else@example.com>\r\n")
+        assert {:ok, "354 enter mail, end with line containing only '.'\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
+      end)
+    end
+
+    test "will read data until ." do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "250 Recipient OK\r\n"} = send_and_wait(socket, transport, "RCPT TO:<someone-else@example.com>\r\n")
+        assert {:ok, "354 enter mail, end with line containing only '.'\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
+
+        transport.send(socket, "This is a multiline message\r\n")
+        transport.send(socket, "So this should have like, plenty of messages\r\n")
+        transport.send(socket, "The end is neigh\r\n")
+        transport.send(socket, "\r\n")
+        transport.send(socket, ".\r\n")
+
+        assert {:ok, "250 queued as " <> _} = transport.recv(socket, 0, 5000)
+      end)
+    end
+  end
 end

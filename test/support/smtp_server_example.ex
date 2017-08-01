@@ -97,7 +97,9 @@ defmodule Mailmaid.SMTP.ServerExample do
   end
 
   def handle_DATA(from, to, data, state) do
+    #IO.inspect {:handle_DATA, from, to, data}
     #reference = :lists.flatten([:io_lib.format("~2.16.0b", [x])])
+    {:ok, "Accepted", state}
   end
 
   def handle_RSET(state), do: state
