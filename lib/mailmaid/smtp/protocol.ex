@@ -648,8 +648,8 @@ defmodule Mailmaid.SMTP.Protocol do
 
           {:ok, state} ->
             loop(socket, transport, state)
-          {:stop, reason, _state} -> end_loop(socket, transport, reason, state)
-          {:error, reason} -> end_loop(socket, transport, reason, state)
+
+          other -> other
         end
       {:error, reason} ->
         :ok = transport.close(socket)
@@ -666,8 +666,7 @@ defmodule Mailmaid.SMTP.Protocol do
         loop socket, transport, state
 
       {:ok, state} -> loop(socket, transport, state)
-      {:stop, reason, _state} -> end_loop(socket, transport, reason, state)
-      {:error, reason} -> end_loop(socket, transport, reason, state)
+      other -> other
     end
   end
 
@@ -684,12 +683,15 @@ defmodule Mailmaid.SMTP.Protocol do
       {:ok, banner, callback_state} ->
         transport.send(socket, ["220 ", banner, "\r\n"])
         state = put_in(state.callback_state, callback_state)
-        loop socket, transport, state
+        case loop(socket, transport, state) do
+          {:stop, reason, state} -> end_loop(socket, transport, reason, state)
+          {:error, reason} -> end_loop(socket, transport, reason, state)
+        end
 
       {:stop, reason, message} ->
         transport.send(socket, [message, "\r\n"])
         :ok = transport.close(socket)
-        exit(:normal)
+        exit(reason)
 
       :ignore ->
         :ok = transport.close(socket)

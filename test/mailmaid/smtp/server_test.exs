@@ -547,13 +547,44 @@ defmodule Mailmaid.SMTP.ServerTest do
         assert {:ok, "250 Recipient OK\r\n"} = send_and_wait(socket, transport, "RCPT TO:<someone-else@example.com>\r\n")
         assert {:ok, "354 enter mail, end with line containing only '.'\r\n"} = send_and_wait(socket, transport, "DATA\r\n")
 
-        transport.send(socket, "This is a multiline message\r\n")
-        transport.send(socket, "So this should have like, plenty of messages\r\n")
-        transport.send(socket, "The end is neigh\r\n")
-        transport.send(socket, "\r\n")
-        transport.send(socket, ".\r\n")
+        :ok = transport.send(socket, "This is a multiline message\r\n")
+        :ok = transport.send(socket, "So this should have like, plenty of messages\r\n")
+        :ok = transport.send(socket, "The end is neigh\r\n")
+        :ok = transport.send(socket, "\r\n")
+        :ok = transport.send(socket, ".\r\n")
 
         assert {:ok, "250 queued as " <> _} = transport.recv(socket, 0, 5000)
+      end)
+    end
+  end
+
+  describe "RSET" do
+    test "will reset" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 OK\r\n"} = send_and_wait(socket, transport, "RSET\r\n")
+      end)
+    end
+  end
+
+  describe "NOOP" do
+    test "will do nothing" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 OK\r\n"} = send_and_wait(socket, transport, "NOOP\r\n")
+      end)
+    end
+  end
+
+  describe "QUIT" do
+    test "will close the connection" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "221 BYE\r\n"} = send_and_wait(socket, transport, "QUIT\r\n")
+        assert {:error, :closed} = transport.recv(socket, 0, 1000)
       end)
     end
   end
