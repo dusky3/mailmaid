@@ -435,5 +435,14 @@ defmodule Mailmaid.SMTP.ServerTest do
         assert {:ok, "552 go away\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<badguy@blacklist.com>\r\n")
       end)
     end
+
+    test "will error given a multiple MAIL commands" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+        assert {:ok, "503 ERROR: Multiple MAIL command\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+      end)
+    end
   end
 end
