@@ -588,4 +588,13 @@ defmodule Mailmaid.SMTP.ServerTest do
       end)
     end
   end
+
+  describe "VRFY" do
+    test "will verify an address" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "252 VRFY disabled by policy, just send some mail\r\n"} = send_and_wait(socket, transport, "VRFY <someone@example.com>\r\n")
+      end)
+    end
+  end
 end
