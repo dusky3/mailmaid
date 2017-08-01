@@ -95,7 +95,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "AUTH\r\n")
+        assert {:ok, "503 ERROR: send EHLO first\r\n"} = send_and_wait(socket, transport, "AUTH\r\n")
       end)
     end
   end
@@ -315,4 +315,68 @@ defmodule Mailmaid.SMTP.ServerTest do
       end)
     end
   end
+
+  def format_cram_md5({username, password}) do
+    Base.encode64("#{username} #{password}")
+  end
+
+  def perform_cram_md5(socket, transport, {username, password}) do
+    assert {:ok, "334 " <> seed64} = send_and_wait(socket, transport, "AUTH CRAM-MD5\r\n")
+    seed64 = String.trim_trailing(seed64, "\r\n")
+    {:ok, seed} = Base.decode64(seed64)
+    digest = Mailmaid.SMTP.Auth.CramMD5.compute_digest(password, seed)
+    send_and_wait(socket, transport, "#{format_cram_md5({username, digest})}\r\n")
+  end
+
+  def perform_successful_cram_md5(socket, transport, pl) do
+    assert {:ok, "235 Authentication successful\r\n"} = perform_cram_md5(socket, transport, pl)
+  end
+
+  def perform_unsuccessful_cram_md5(socket, transport, pl) do
+    assert {:ok, "535 Authentication failed\r\n"} = perform_cram_md5(socket, transport, pl)
+  end
+
+  describe "AUTH CRAM-MD5" do
+    test "will accept an HELO before the AUTH" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH CRAM-MD5\r\n")
+      end)
+    end
+
+    test "will be successful given correct credentials" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_successful_cram_md5(socket, transport, {"username", "PaSSw0rd"})
+      end)
+    end
+
+    test "will not be successful given a incorrect username" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_cram_md5(socket, transport, {"nottheuser", "PaSSw0rd"})
+      end)
+    end
+
+    test "will not be successful given a incorrect password" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_cram_md5(socket, transport, {"username", "notthepassword"})
+      end)
+    end
+
+    test "will not be successful given both incorrect username and password" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_cram_md5(socket, transport, {"nottheuser", "notthepassword"})
+      end)
+    end
+  end
+
 end

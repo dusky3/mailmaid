@@ -185,7 +185,7 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def handle(socket, transport, {"AUTH", _}, %{envelope: nil} = state) do
-    transport.send(socket, "503 ERROR: send EHLO or HELO first\r\n")
+    transport.send(socket, "503 ERROR: send EHLO first\r\n")
     {:ok, state}
   end
 
@@ -226,9 +226,10 @@ defmodule Mailmaid.SMTP.Protocol do
 
             <<"CRAM-MD5">> ->
               :crypto.start
-              cram_string = :smtp_util.get_cram_string(state.hostname)
+              cram_string = Mailmaid.SMTP.Auth.CramMD5.get_string(state.hostname)
               transport.send(socket, ["334 ", cram_string, "\r\n"])
-              {:ok, %{state | waiting_for_auth: :'cram-md5', auth_data: Base.decode64(cram_string), envelope: %{envelope | auth: {<<>>, <<>>}}}}
+              {:ok, auth_data} = Base.decode64(cram_string)
+              {:ok, %{state | waiting_for_auth: :'cram-md5', auth_data: auth_data, envelope: %{envelope | auth: {<<>>, <<>>}}}}
           end
         else
           transport.send(socket, "504 Unrecognized authentication type\r\n")
