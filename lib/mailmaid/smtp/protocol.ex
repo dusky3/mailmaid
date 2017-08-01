@@ -54,11 +54,11 @@ defmodule Mailmaid.SMTP.Protocol do
     if function_exported?(state.session_module, :handle_AUTH, 4) do
       case state.session_module.handle_AUTH(auth_type, username, credential, state.callback_state) do
         {:ok, callback_state} ->
-          transport.send(socket, "235 Authentication successful.\r\n")
+          transport.send(socket, "235 Authentication successful\r\n")
           {:ok, %{state | callback_state: callback_state, envelope: %Envelope{state.envelope | auth: {username, credential}}}}
 
         _ ->
-          transport.send(socket, "535 Authentication failed.\r\n")
+          transport.send(socket, "535 Authentication failed\r\n")
           {:ok, state}
       end
     else

@@ -90,18 +90,6 @@ defmodule Mailmaid.SMTP.ServerTest do
     end
   end
 
-  def perform_successful_login(socket, transport, username, password) do
-    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
-    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
-    assert {:ok, "235 Authentication successful.\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
-  end
-
-  def perform_unsuccessful_login(socket, transport, username, password) do
-    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
-    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
-    assert {:ok, "535 Authentication failed.\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
-  end
-
   describe "AUTH" do
     test "will error if HELO or EHLO is not called first" do
       launch_server(fn socket, transport ->
@@ -110,7 +98,28 @@ defmodule Mailmaid.SMTP.ServerTest do
         assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "AUTH\r\n")
       end)
     end
+  end
 
+  def perform_successful_login(socket, transport, username, password) do
+    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
+    assert {:ok, "235 Authentication successful\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
+  end
+
+  def perform_unsuccessful_login(socket, transport, username, password) do
+    assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
+    assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(username)}\r\n")
+    assert {:ok, "535 Authentication failed\r\n"} = send_and_wait(socket, transport, "#{Base.encode64(password)}\r\n")
+  end
+
+  def ehlo_intro(socket, transport) do
+    wait_for_banner(socket, transport)
+
+    assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+    assert true == receive_auth_lines(socket, transport)
+  end
+
+  describe "AUTH LOGIN" do
     test "will accept an HELO before the AUTH" do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
@@ -120,50 +129,189 @@ defmodule Mailmaid.SMTP.ServerTest do
       end)
     end
 
-    test "will accept an EHLO before the AUTH LOGIN and successfully authneticate" do
+    test "will accept an EHLO before the AUTH and successfully authneticate" do
       launch_server(fn socket, transport ->
-        wait_for_banner(socket, transport)
-
-        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
-        assert true == receive_auth_lines(socket, transport)
+        ehlo_intro(socket, transport)
 
         perform_successful_login(socket, transport, "username", "PaSSw0rd")
       end)
     end
 
-    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate" do
+    test "will accept an EHLO before the AUTH and unsuccessfully authneticate" do
       launch_server(fn socket, transport ->
-        wait_for_banner(socket, transport)
-
-        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
-        assert true == receive_auth_lines(socket, transport)
+        ehlo_intro(socket, transport)
 
         perform_unsuccessful_login(socket, transport, "username", "meh")
       end)
     end
 
-    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate because malformed username" do
+    test "will accept an EHLO before the AUTH and unsuccessfully authneticate because malformed username" do
       launch_server(fn socket, transport ->
-        wait_for_banner(socket, transport)
-
-        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
-        assert true == receive_auth_lines(socket, transport)
+        ehlo_intro(socket, transport)
 
         assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
         assert {:ok, "501 Malformed LOGIN username\r\n"} = send_and_wait(socket, transport, "malf roem\r\n")
       end)
     end
 
-    test "will accept an EHLO before the AUTH LOGIN and unsuccessfully authneticate because malformed password" do
+    test "will accept an EHLO before the AUTH and unsuccessfully authneticate because malformed password" do
       launch_server(fn socket, transport ->
-        wait_for_banner(socket, transport)
-
-        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
-        assert true == receive_auth_lines(socket, transport)
+        ehlo_intro(socket, transport)
 
         assert {:ok, "334 VXNlcm5hbWU6\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
         assert {:ok, "334 UGFzc3dvcmQ6\r\n"} = send_and_wait(socket, transport, "#{Base.encode64("username")}\r\n")
         assert {:ok, "501 Malformed LOGIN password\r\n"} = send_and_wait(socket, transport, "pass word\r\n")
+      end)
+    end
+  end
+
+  def format_plain({username, password}) do
+    Base.encode64("#{username}\0#{password}")
+  end
+
+  def format_plain({identity, username, password}) do
+    Base.encode64("#{identity}\0#{username}\0#{password}")
+  end
+
+  def perform_successful_plain_inline(socket, transport, pl) do
+    assert {:ok, "235 Authentication successful\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN #{format_plain(pl)}\r\n")
+  end
+
+  def perform_unsuccessful_plain_inline(socket, transport, pl) do
+    assert {:ok, "535 Authentication failed\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN #{format_plain(pl)}\r\n")
+  end
+
+  def perform_successful_plain(socket, transport, pl) do
+    assert {:ok, "334\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
+    assert {:ok, "235 Authentication successful\r\n"} = send_and_wait(socket, transport, "#{format_plain(pl)}\r\n")
+  end
+
+  def perform_unsuccessful_plain(socket, transport, pl) do
+    assert {:ok, "334\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
+    assert {:ok, "535 Authentication failed\r\n"} = send_and_wait(socket, transport, "#{format_plain(pl)}\r\n")
+  end
+
+  describe "AUTH PLAIN" do
+    test "will accept an HELO before the AUTH" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
+      end)
+    end
+
+    test "will be successful given correct credentials [inline]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_successful_plain_inline(socket, transport, {"username", "PaSSw0rd"})
+      end)
+    end
+
+    test "will be successful given correct credentials [inline] (with identity)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_successful_plain_inline(socket, transport, {"IAm User", "username", "PaSSw0rd"})
+      end)
+    end
+
+    test "will be successful given correct credentials" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_successful_plain(socket, transport, {"username", "PaSSw0rd"})
+      end)
+    end
+
+    test "will be successful given correct credentials (with identity)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_successful_plain(socket, transport, {"IAm User", "username", "PaSSw0rd"})
+      end)
+    end
+
+    test "will not be successful given a incorrect username [inline]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain_inline(socket, transport, {"IAm User", "nottheuser", "PaSSw0rd"})
+      end)
+    end
+
+    test "will not be successful given a incorrect password [inline]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain_inline(socket, transport, {"IAm User", "username", "notthepassword"})
+      end)
+    end
+
+    test "will not be successful given both incorrect username and password [inline]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain_inline(socket, transport, {"IAm User", "nottheuser", "notthepassword"})
+      end)
+    end
+
+    test "will not be successful given a incorrect username" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain(socket, transport, {"IAm User", "nottheuser", "PaSSw0rd"})
+      end)
+    end
+
+    test "will not be successful given a incorrect password" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain(socket, transport, {"IAm User", "username", "notthepassword"})
+      end)
+    end
+
+    test "will not be successful given both incorrect username and password" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        perform_unsuccessful_plain(socket, transport, {"IAm User", "nottheuser", "notthepassword"})
+      end)
+    end
+
+    test "will error given malformed login [inline] (unencoded)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "501 Malformed AUTH PLAIN\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN username\0PaSSw0rd\r\n")
+      end)
+    end
+
+    test "will error given malformed login [inline] (missing password)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "501 Malformed AUTH PLAIN\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN #{Base.encode64("username")}\r\n")
+      end)
+    end
+
+    test "will error given malformed login (unencoded)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "334\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
+        assert {:ok, "501 Malformed AUTH PLAIN\r\n"} = send_and_wait(socket, transport, "username\0PaSSw0rd\r\n")
+      end)
+    end
+
+    test "will error given malformed login (missing password)" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "334\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
+        assert {:ok, "501 Malformed AUTH PLAIN\r\n"} = send_and_wait(socket, transport, "#{Base.encode64("username")}\r\n")
       end)
     end
   end
