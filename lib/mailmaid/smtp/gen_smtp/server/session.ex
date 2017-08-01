@@ -1,4 +1,4 @@
-defmodule Mailmaid.SMTP.Server.Session do
+defmodule Mailmaid.SMTP.GenSMTP.Server.Session do
   defmodule Envelope do
     defstruct from: nil,
       to: [],
@@ -850,8 +850,12 @@ defmodule Mailmaid.SMTP.Server.Session do
 
   def receive_data(acc, socket, recv_size, size, max_size, session, options) do
     case :socket.recv(socket, recv_size, 1000) do
-      {:ok, packet} when acc == [] ->
-        case check_bare_crlf(packet, <<>>, :proplists.get_value(:allow_bare_newlines, options, false), 0) do
+      {:ok, packet} ->
+        last = case acc do
+          [] -> <<>>
+          [last | _] -> last
+        end
+        case check_bare_crlf(packet, last, :proplists.get_value(:allow_bare_newlines, options, false), 0) do
           :error ->
             send(session, {:receive_data, {:error, :bare_newline}})
 

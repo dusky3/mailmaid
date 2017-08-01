@@ -1,8 +1,8 @@
 require Base
 
-defmodule Mailmaid.SMTP.Server.SessionTest do
+defmodule Mailmaid.SMTP.GenSMTP.Server.SessionTest do
   use ExUnit.Case
-  alias Mailmaid.SMTP.Server.Session
+  alias Mailmaid.SMTP.GenSMTP.Server.Session
   doctest Session
 
   def await_socket do
