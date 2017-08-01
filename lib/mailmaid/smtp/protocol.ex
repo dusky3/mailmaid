@@ -662,7 +662,7 @@ defmodule Mailmaid.SMTP.Protocol do
     callbackoptions = Keyword.get(state.session_options, :callbackoptions, [])
     case state.session_module.init(state.hostname, nil, peer_name, callbackoptions) do
       {:ok, banner, callback_state} ->
-        transport.send(socket, ["200 ", banner, "\r\n"])
+        transport.send(socket, ["220 ", banner, "\r\n"])
         state = put_in(state.callback_state, callback_state)
         loop socket, transport, state
 
