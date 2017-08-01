@@ -379,4 +379,61 @@ defmodule Mailmaid.SMTP.ServerTest do
     end
   end
 
+  describe "MAIL FROM" do
+    test "will error unless HELO or EHLO is called first" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+
+        assert {:ok, "503 ERROR: send EHLO or HELO first\r\n"} = send_and_wait(socket, transport, "MAIL\r\n")
+      end)
+    end
+
+    test "will error if MAIL command is missing parameters" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "501 Syntax Error: MAIL FROM:<address>\r\n"} = send_and_wait(socket, transport, "MAIL\r\n")
+      end)
+    end
+
+    test "will accept a MAIL FROM command" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com>\r\n")
+      end)
+    end
+
+    test "will accept a MAIL FROM command with extensions [SIZE]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com> SIZE=1048576\r\n")
+      end)
+    end
+
+    test "will accept a MAIL FROM command with extensions [BODY]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com> BODY=BIN\r\n")
+      end)
+    end
+
+    test "will accept a MAIL FROM command with extensions [other]" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "250 Sender OK\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<someone@example.com> X-SomeExtension\r\n")
+      end)
+    end
+
+    test "will error given a blacklisted address" do
+      launch_server(fn socket, transport ->
+        ehlo_intro(socket, transport)
+
+        assert {:ok, "552 go away\r\n"} = send_and_wait(socket, transport, "MAIL FROM:<badguy@blacklist.com>\r\n")
+      end)
+    end
+  end
 end

@@ -303,40 +303,45 @@ defmodule Mailmaid.SMTP.Protocol do
                 handle_mail(socket, transport, parsed_address, state)
 
               {parsed_address, extra_info} ->
-                options =
-                  extra_info
-                  |> String.split(~r/\s+/)
-                  |> Enum.map(&String.upcase/1)
+                # in the original implementation, the extra_info was upcased
+                # this made a mess of the other extensions since their strings would be uppercase
+                options = String.split(extra_info, ~r/\s+/)
 
                 res = Enum.reduce(options, state, fn
                   _, {:error, _} = err -> err
-                  "SIZE=" <> size, state ->
-                    case get_extension(state.extensions, "SIZE") do
-                      nil ->
-                        {:error, "555 Unsupported option: SIZE\r\n"}
+                  option, state ->
+                    {key, value} = case String.split(option, "=", parts: 2) do
+                      [key, value] -> {key, value}
+                      [key] -> {key, nil}
+                    end
 
-                      {_, value} ->
-                        size_i = String.to_integer(size)
-                        if size_i > String.to_integer(value) do
-                          {:error, ["552 Estimated message length ", size, "exceeds limit of ", value, "\r\n"]}
-                        else
-                          %{state | envelope: %{expected_size: size_i}}
+                    # the key is upcased to make it easier to match
+                    case String.upcase(key) do
+                      "SIZE" ->
+                        case get_extension(state.extensions, "SIZE") do
+                          nil -> {:error, "555 Unsupported option: SIZE\r\n"}
+
+                          {_, max_size} ->
+                            size_i = String.to_integer(value)
+                            if size_i > String.to_integer(max_size) do
+                              {:error, ["552 Estimated message length ", value, "exceeds limit of ", max_size, "\r\n"]}
+                            else
+                              %{state | envelope: %{state.envelope | expected_size: size_i}}
+                            end
                         end
-                    end
 
-                  "BODY=" <> _type, state ->
-                    case get_extension(state.extensions, "8BITMIME") do
-                      nil -> {:error, "555 Unsupported option: BODY\r\n"}
-                      {_, _} -> state
-                    end
+                      "BODY" ->
+                        case get_extension(state.extensions, "8BITMIME") do
+                          nil -> {:error, "555 Unsupported option: BODY\r\n"}
+                          {_, _} -> state
+                        end
 
-                  value, state ->
-                    case state.session_module.handle_MAIL_extension(value, state.callback_state) do
-                      {:ok, callback_state} ->
-                        %{state | callback_state: callback_state}
+                      _ ->
+                        case state.session_module.handle_MAIL_extension(option, state.callback_state) do
+                          {:ok, callback_state} -> %{state | callback_state: callback_state}
 
-                      :error ->
-                        {:error, ["555 Unsupported option: ", value, "\r\n"]}
+                          :error -> {:error, ["555 Unsupported option: ", value, "\r\n"]}
+                        end
                     end
                 end)
 
