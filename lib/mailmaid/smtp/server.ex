@@ -1,6 +1,12 @@
 require Logger
 
 defmodule Mailmaid.SMTP.Server do
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Mailmaid.SMTP.Server.Session
+    end
+  end
+
   defmodule Listener do
     defstruct hostname: nil, port: nil, sessionoptions: [], socket: nil, listenoptions: []
 

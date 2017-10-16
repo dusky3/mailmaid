@@ -45,6 +45,27 @@ defmodule Mailmaid.SMTP.Server.Session do
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
   @timeout 180000
 
+  @type reason_t :: String.t | iolist
+  @type callback_state_t :: String.t | iolist
+  @type extensions_t :: [{String.t, String.t}]
+
+  @callback init(hostname :: String.t, session_count :: integer, peer_name :: term, callback_options :: term) :: {:ok, reason_t, callback_state_t} | {:stop, reason_t, callback_state_t} | :ignore
+  @callback terminate(reason :: term, callback_state_t) :: :ok
+  @callback code_change(old_vsn :: term, callback_state_t, extra :: term) :: {:ok, callback_state_t} | term
+
+  @callback handle_AUTH(auth_type :: atom, username :: String.t, credential :: String.t, callback_state_t) :: {:ok, callback_state_t} | term
+  @callback handle_DATA(from :: String.t, to :: String.t, data :: binary, callback_state_t) :: {:ok, reference :: reason_t, callback_state_t} | {:error, reason_t, callback_state_t}
+  @callback handle_HELO(hostname :: String.t, callback_state_t) :: {:ok, max_size :: integer, callback_state_t} | {:ok, callback_state_t} | {:error, reason_t, callback_state_t}
+  @callback handle_EHLO(hostname :: String.t, extensions_t, callback_state_t) :: {:ok, extensions_t, callback_state_t} | {:error, reason_t, callback_state_t}
+  @callback handle_MAIL(address :: String.t, callback_state_t) :: {:ok, callback_state_t} | {:error, reason_t, callback_state_t}
+  @callback handle_MAIL_extension(extension :: String.t, callback_state_t) :: {:ok, callback_state_t} | :error
+  @callback handle_RCPT(address :: String.t, callback_state_t) :: {:ok, callback_state_t} | {:error, reason_t, callback_state_t}
+  @callback handle_RCPT_extension(extension :: String.t, callback_state_t) :: {:ok, callback_state_t} | :error
+  @callback handle_RSET(callback_state_t) :: callback_state_t
+  @callback handle_VRFY(address :: String.t, callback_state_t) :: {:ok, reply :: reason_t, callback_state_t} | {:error, message :: reason_t, callback_state_t}
+  @callback handle_STARTTLS(callback_state_t) :: callback_state_t
+  @callback handle_other(verb :: String.t, args :: String.t, callback_state_t) :: {message :: reason_t, callback_state_t}
+
   def start_link(socket, module, options, config \\ []) do
     GenServer.start_link(__MODULE__, [socket, module, options], config)
   end
