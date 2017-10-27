@@ -1,7 +1,7 @@
 defmodule Mailmaid.SMTP.Server do
   defmacro __using__(_opts) do
     quote do
-      @behaviour Mailmaid.SMTP.Server.Session
+      @behaviour Mailmaid.SMTP.Protocol
     end
   end
 
