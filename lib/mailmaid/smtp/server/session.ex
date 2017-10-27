@@ -1,4 +1,4 @@
-defmodule Mailmaid.SMTP.GenSMTP.Server.Session do
+defmodule Mailmaid.SMTP.Server.Session do
   defmodule Envelope do
     defstruct from: nil,
       to: [],
