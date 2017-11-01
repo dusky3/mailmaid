@@ -10,6 +10,18 @@ defmodule Mailmaid.SMTP.Server do
   """
   alias :ranch, as: Ranch
 
+  @type ubyte_t :: {0..255}
+  @type ipv4_t :: {ubyte_t, ubyte_t, ubyte_t, ubyte_t}
+  @type listener_config :: [
+    {:domain, String.t},
+    {:address, ipv4_t},
+    {:port, non_neg_integer},
+    {:protocol, :tcp},
+    {:family, :inet | :inet6},
+    {:tls, boolean},
+    {:sessionoptions, Keyword.t}
+  ]
+
   @doc """
   Starts a new SMTP server listener
 
@@ -17,7 +29,7 @@ defmodule Mailmaid.SMTP.Server do
   * `session_module` - the callback module and name of the listener
   * `listeners` - a list of keyword lists. For now just wrap the args in a list.
   """
-  @spec start_link(session_module :: atom, listeners :: list) :: {:ok, pid} | {:error, term}
+  @spec start_link(session_module :: atom, listeners :: [listener_config]) :: {:ok, pid} | {:error, term}
   def start_link(session_module, [args]) do
     num_acceptors = 256
     transport_opts = [
