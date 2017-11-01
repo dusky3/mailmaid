@@ -1,6 +1,6 @@
 # Mail Maid
 
-Replacement for gen_smtp comes equipped with streaming
+Rewrite/Port of [gen_smtp](https://github.com/Vagabond/gen_smtp) to use ranch for server.
 
 ## Installation
 
