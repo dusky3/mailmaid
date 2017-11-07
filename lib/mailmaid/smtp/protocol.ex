@@ -40,6 +40,7 @@ defmodule Mailmaid.SMTP.Protocol do
   @maximum_size 10485760
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
   @timeout 180000
+  #@timeout 15_000
 
   @type reason_t :: String.t | iolist
   @type callback_state_t :: String.t | iolist
@@ -625,11 +626,8 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   def end_loop(socket, transport, reason, state) do
-    try do
-      state.session_module.terminate(state.callback_state)
-    after
-      exit(reason)
-    end
+    state.session_module.terminate(reason, state.callback_state)
+    exit(reason)
   end
 
   def trim_pdu(pdu) do
