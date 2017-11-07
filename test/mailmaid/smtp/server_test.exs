@@ -4,7 +4,7 @@ defmodule Mailmaid.SMTP.ServerTest do
   def launch_server(cb) do
     {:ok, _pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [
       [
-        hostname: "mailmaid.devl",
+        hostname: "mailmaid.localhost",
         port: 9876,
         sessionoptions: [
           callbackoptions: [auth: true]
@@ -49,7 +49,7 @@ defmodule Mailmaid.SMTP.ServerTest do
   end
 
   def wait_for_banner(socket, transport) do
-    assert {:ok, "220 mailmaid.devl " <> _} = transport.recv(socket, 0, 1000)
+    assert {:ok, "220 mailmaid.localhost " <> _} = transport.recv(socket, 0, 1000)
   end
 
   describe "EHLO" do
@@ -57,7 +57,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
 
         assert true == receive_auth_lines(socket, transport)
       end)
@@ -77,7 +77,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "250 mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
       end)
     end
 
@@ -115,7 +115,7 @@ defmodule Mailmaid.SMTP.ServerTest do
   def ehlo_intro(socket, transport) do
     wait_for_banner(socket, transport)
 
-    assert {:ok, "250-mailmaid.devl\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+    assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
     assert true == receive_auth_lines(socket, transport)
   end
 
@@ -124,7 +124,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "250 mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
         assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH LOGIN\r\n")
       end)
     end
@@ -196,7 +196,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "250 mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
         assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH PLAIN\r\n")
       end)
     end
@@ -341,7 +341,7 @@ defmodule Mailmaid.SMTP.ServerTest do
       launch_server(fn socket, transport ->
         wait_for_banner(socket, transport)
 
-        assert {:ok, "250 mailmaid.devl\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
+        assert {:ok, "250 mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "HELO somehost.com\r\n")
         assert {:ok, "502 ERROR: AUTH not implemented\r\n"} = send_and_wait(socket, transport, "AUTH CRAM-MD5\r\n")
       end)
     end
