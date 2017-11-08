@@ -13,7 +13,7 @@ defmodule Mailmaid.SMTP.Auth.CramMD5 do
   end
 
   def get_string(hostname) do
-    :io_lib.format("<~B.~B@~s>", [:crypto.rand_uniform(0, 4294967295), :crypto.rand_uniform(0, 4294967295), hostname])
+    :io_lib.format("<~B.~B@~s>", [:rand.uniform(4294967295), :rand.uniform(4294967295), hostname])
     |> List.flatten
     |> :erlang.list_to_binary
     |> Base.encode64

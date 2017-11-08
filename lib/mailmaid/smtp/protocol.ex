@@ -576,9 +576,9 @@ defmodule Mailmaid.SMTP.Protocol do
 
     case receive_data_loop([], socket, transport, 0, size, max_size, state) do
       {:ok, {data, rest}, state} ->
-        case rest do
+        state = case rest do
           "" -> state
-          _ -> state.backlog ++ [rest]
+          _ -> put_in(state.backlog, state.backlog ++ [rest])
         end
 
         transport.setopts(socket, [packet: :line])
@@ -620,12 +620,12 @@ defmodule Mailmaid.SMTP.Protocol do
         transport.send(socket, "552 Message too large\r\n")
         %{state | read_message: false, envelope: %Envelope{}}
 
-      {:error, reason, state} ->
+      {:error, _reason, state} ->
         %{state | read_message: false, envelope: %Envelope{}}
     end
   end
 
-  def end_loop(socket, transport, reason, state) do
+  def end_loop(_socket, _transport, reason, state) do
     state.session_module.terminate(reason, state.callback_state)
     exit(reason)
   end
