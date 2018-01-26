@@ -11,15 +11,20 @@ defmodule Mailmaid.SMTP.Server do
   alias :ranch, as: Ranch
 
   @type ubyte_t :: {0..255}
+  @type int16_t :: {0..0xFFFF}
   @type ipv4_t :: {ubyte_t, ubyte_t, ubyte_t, ubyte_t}
+  @type ipv6_t :: {int16_t, int16_t, int16_t, int16_t, int16_t, int16_t}
   @type listener_config :: [
-    {:domain, String.t},
-    {:address, ipv4_t},
-    {:port, non_neg_integer},
-    {:protocol, :tcp},
+    {:address, ipv4_t | ipv6_t},
     {:family, :inet | :inet6},
-    {:tls, boolean},
-    {:sessionoptions, Keyword.t}
+    {:hostname, String.t},
+    {:port, non_neg_integer},
+    {:sessionoptions, Keyword.t},
+    {:protocol, :tcp},
+    {:ssl_options, [
+      {:keyfile, String.t},
+      {:certfile, String.t},
+    ]},
   ]
 
   @doc """
@@ -30,18 +35,26 @@ defmodule Mailmaid.SMTP.Server do
   * `listeners` - a list of keyword lists. For now just wrap the args in a list.
   """
   @spec start_link(session_module :: atom, listeners :: [listener_config]) :: {:ok, pid} | {:error, term}
-  def start_link(session_module, [args]) do
+  def start_link(session_module, [listener_options]) do
     num_acceptors = 256
     transport_opts = [
-      port: Keyword.get(args, :port, 2525)
+      {:port, Keyword.get(listener_options, :port, 2525)},
+      Keyword.get(listener_options, :family, :inet)
     ]
     opts = [
       session_module: session_module,
-      hostname: Keyword.get(args, :hostname, :smtp_util.guess_FQDN()),
-      address: Keyword.get(args, :address, {0, 0, 0, 0}),
-      session_options: Keyword.get(args, :sessionoptions, []),
-      tls: Keyword.get(args, :tls, false),
+      hostname: Keyword.get(listener_options, :hostname, :smtp_util.guess_FQDN()),
+      address: Keyword.get(listener_options, :address, {0, 0, 0, 0}),
+      session_options: Keyword.get(listener_options, :sessionoptions, []),
+      tls: false,
+      ssl_options: Keyword.get(listener_options, :ssl_options, []),
     ]
-    Ranch.start_listener(session_module, num_acceptors, :ranch_tcp, transport_opts, Mailmaid.SMTP.Protocol, opts)
+    {transport, transport_opts} = case Keyword.get(listener_options, :protocol, :tcp) do
+      :tcp -> {:ranch_tcp, transport_opts}
+      :ssl ->
+        more_options = Keyword.get(listener_options, :ssl_options)
+        {:ranch_ssl, [transport_opts | more_options]}
+    end
+    Ranch.start_listener(session_module, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts)
   end
 end

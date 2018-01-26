@@ -1,14 +1,15 @@
 defmodule Mailmaid.SMTP.ServerTest do
   use ExUnit.Case
 
-  def launch_server(cb) do
+  def launch_server(cb, options \\ []) do
     {:ok, _pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [
       [
-        hostname: "mailmaid.localhost",
-        port: 9876,
-        sessionoptions: [
+        {:hostname, "mailmaid.localhost"},
+        {:port, 9876},
+        {:sessionoptions, [
           callbackoptions: [auth: true]
-        ]
+        ]}
+        | options
       ]
     ])
     try do
@@ -376,6 +377,109 @@ defmodule Mailmaid.SMTP.ServerTest do
 
         perform_unsuccessful_cram_md5(socket, transport, {"nottheuser", "notthepassword"})
       end)
+    end
+  end
+
+  def receive_starttls_lines(socket, transport, acc \\ false) do
+    case transport.recv(socket, 0, 1000) do
+      {:ok, "250-STARTTLS" <> _rest = line} ->
+        receive_starttls_lines(socket, transport, true)
+
+      {:ok, "250-" <> _rest = line} ->
+        receive_starttls_lines(socket, transport, acc)
+
+      {:ok, "250 STARTTLS" <> _rest} ->
+        true
+
+      {:ok, "250 " <> _rest} ->
+        acc
+
+      {:ok, _} ->
+        :error
+    end
+  end
+
+  describe "STARTTLS" do
+    @tls_server_options [
+      ssl_options: [{:keyfile, "test/fixtures/server.key"}, {:certfile, "test/fixtures/server.crt"}]
+    ]
+
+    test "EHLO response includes STARTTLS" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+      end, @tls_server_options)
+    end
+
+    test "STARTTLS does a SSL handshake" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+        assert {:ok, "220 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
+        transport = :ranch_ssl
+        assert {:ok, _socket} = :ssl.connect(socket, [])
+      end, @tls_server_options)
+    end
+
+    test "After STARTTLS, EHLO doesn't report STARTTLS" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+        assert {:ok, "220 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
+        transport = :ranch_ssl
+        assert {:ok, socket} = :ssl.connect(socket, [])
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert false == receive_starttls_lines(socket, transport)
+      end, @tls_server_options)
+    end
+
+    test "After STARTTLS, re-negotiating STARTTLS is an error" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+        assert {:ok, "220 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
+        transport = :ranch_ssl
+        assert {:ok, socket} = :ssl.connect(socket, [])
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert false == receive_starttls_lines(socket, transport)
+        assert {:ok, "500 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
+      end, @tls_server_options)
+    end
+
+    test "STARTTLS can't take any parameters" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+        assert {:ok, "501 " <> _} = send_and_wait(socket, transport, "STARTTLS foo\r\n")
+      end, @tls_server_options)
+    end
+
+    test "After STARTTLS, message is received by server" do
+      launch_server(fn socket, transport ->
+        wait_for_banner(socket, transport)
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert true == receive_starttls_lines(socket, transport)
+        assert {:ok, "220 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
+        transport = :ranch_ssl
+        assert {:ok, socket} = :ssl.connect(socket, [])
+        assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
+        assert false == receive_starttls_lines(socket, transport)
+        assert {:ok, "250 " <> _} = send_and_wait(socket, transport, "MAIL FROM: <user@somehost.com>\r\n")
+        assert {:ok, "250 " <> _} = send_and_wait(socket, transport, "RCPT TO: <user@otherhost.com>\r\n")
+        assert {:ok, "354 " <> _} = send_and_wait(socket, transport, "DATA\r\n")
+        transport.send(socket, "Subject: tls message\r\n")
+        transport.send(socket, "To: <user@otherhost.com>\r\n")
+        transport.send(socket, "From: <user@somehost.com>\r\n")
+        transport.send(socket, "\r\n")
+        transport.send(socket, "message body")
+        transport.send(socket, "\r\n.\r\n")
+        assert {:ok, "250 " <> _} = transport.recv(socket, 0, 1000)
+      end, @tls_server_options)
     end
   end
 

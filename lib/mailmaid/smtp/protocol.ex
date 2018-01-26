@@ -29,7 +29,8 @@ defmodule Mailmaid.SMTP.Protocol do
       auth_data: nil,
       extensions: [],
       read_message: false,
-      backlog: []
+      backlog: [],
+      ssl_options: []
   end
 
   @moduledoc """
@@ -490,11 +491,27 @@ defmodule Mailmaid.SMTP.Protocol do
         transport.send(socket, "500 Command Unrecognized\r\n")
         {:ok, state}
 
-      {_, _} ->
-        #transport.send(socket, "220 OK\r\n")
-        Logger.warn "TODO: STARTTLS"
-        transport.send(socket, "502 Command not implemented\r\n")
-        {:ok, state}
+      {_, true} ->
+        transport.send(socket, "220 OK\r\n")
+        case :ssl.ssl_accept(socket, state.ssl_options, 15_000) do
+          {:ok, socket} ->
+            state = %{state |
+              tls: true,
+              envelope: nil,
+              auth_data: nil,
+              waiting_for_auth: nil,
+              read_message: false,
+              backlog: [],
+              callback_state: state.session_module.handle_STARTTLS(state.callback_state)
+            }
+
+            {:ok, state, [socket: socket, transport: :ranch_ssl]}
+
+          {:error, _} ->
+            Logger.warn "TLS negotiation failed"
+            transport.send(socket, "454 TLS negotiation failed\r\n")
+            {:ok, state}
+        end
     end
   end
 
@@ -670,7 +687,8 @@ defmodule Mailmaid.SMTP.Protocol do
 
           {:ok, state} ->
             loop(socket, transport, state)
-
+          {:ok, state, options} ->
+            loop(options[:socket] || socket, options[:transport] || transport, state)
           other -> other
         end
       {:error, reason} ->
@@ -688,6 +706,8 @@ defmodule Mailmaid.SMTP.Protocol do
         loop socket, transport, state
 
       {:ok, state} -> loop(socket, transport, state)
+      {:ok, state, options} ->
+        loop(options[:socket] || socket, options[:transport] || transport, state)
       other -> other
     end
   end
