@@ -49,11 +49,11 @@ defmodule Mailmaid.SMTP.Server do
       tls: false,
       ssl_options: Keyword.get(listener_options, :ssl_options, []),
     ]
-    {transport, transport_opts} = case Keyword.get(listener_options, :protocol, :tcp) do
-      :tcp -> {:ranch_tcp, transport_opts}
+    {transport, transport_opts, opts} = case Keyword.get(listener_options, :protocol, :tcp) do
+      :tcp -> {:ranch_tcp, transport_opts, opts}
       :ssl ->
         more_options = Keyword.get(listener_options, :ssl_options)
-        {:ranch_ssl, transport_opts ++ more_options}
+        {:ranch_ssl, transport_opts ++ more_options, Keyword.put(opts, :tls, true)}
     end
     Ranch.start_listener(session_module, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts)
   end
