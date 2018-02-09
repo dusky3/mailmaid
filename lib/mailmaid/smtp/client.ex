@@ -364,10 +364,7 @@ defmodule Mailmaid.SMTP.Client do
   def connect(host, options) do
     host = to_list_string(host)
 
-    add_sock_opts = case :proplists.get_value(:sockopts, options) do
-      :undefined -> []
-      other -> other
-    end
+    add_sock_opts = options[:sockopts] || []
 
     sock_opts = [:binary, {:packet, :line}, {:keepalive, true}, {:active, false} | add_sock_opts]
 
@@ -376,8 +373,8 @@ defmodule Mailmaid.SMTP.Client do
       _ -> :tcp
     end
 
-    port = case :proplists.get_value(:port, options) do
-      :undefined when proto == :ssl -> 465
+    port = case options[:port] do
+      nil when proto == :ssl -> 465
       oport when is_integer(oport) -> oport
       _ -> 25
     end

@@ -13,38 +13,42 @@ defmodule Mailmaid.SMTP.URI do
     end
   end
 
-  def determine_tls_from_scheme("smtps"), do: :always
-  def determine_tls_from_scheme("smtp+s"), do: :if_available
-  def determine_tls_from_scheme("mm4s"), do: :always
-  def determine_tls_from_scheme("mm4+s"), do: :if_available
-  def determine_tls_from_scheme(_other), do: :never
+  def determine_secure_from_scheme("smtps"), do: {:always, true}
+  def determine_secure_from_scheme("smtp+s"), do: {:if_available, false}
+  def determine_secure_from_scheme("mm4s"), do: {:always, true}
+  def determine_secure_from_scheme("mm4+s"), do: {:if_available, false}
+  def determine_secure_from_scheme(_other), do: {:never, false}
 
   @spec update_mailer_config_from_uri(uri :: URI.t, config :: Keyword.t) :: Keyword.t
   def update_mailer_config_from_uri(uri, config \\ []) do
-    tls = determine_tls_from_scheme(uri.scheme)
-    case user_credentials_from_uri(uri) do
+    {tls, ssl} = determine_secure_from_scheme(uri.scheme)
+    options = [
+      {:scheme, uri.scheme},
+      {:relay, uri.host},
+      {:tls, tls},
+      {:ssl, ssl}
+    ]
+
+    options = if uri.port do
+      [{:port, uri.port} | options]
+    else
+      options
+    end
+
+    options = case user_credentials_from_uri(uri) do
       {username, password} ->
         [
-          {:scheme, uri.scheme},
-          {:relay, uri.host},
-          {:port, uri.port},
           {:username, username},
           {:password, password},
-          {:tls, tls},
           {:auth, :if_available}
-          | config
+          | options
         ]
 
       nil ->
-        [
-          {:scheme, uri.scheme},
-          {:relay, uri.host},
-          {:port, uri.port},
-          {:tls, tls},
-          {:auth, :never}
-          | config
-        ]
+        [{:auth, :never} | options]
     end
+
+    options ++ config
   end
 
   def parse(uri, config \\ []) do
