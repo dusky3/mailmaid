@@ -18,7 +18,12 @@ defmodule Mailmaid.SMTP.Protocol do
   end
 
   defmodule State do
-    defstruct session_module: nil,
+    defstruct [
+      ref: nil,
+      socket: nil,
+      transport: nil,
+
+      session_module: nil,
       envelope: nil,
       hostname: nil,
       address: nil,
@@ -31,6 +36,7 @@ defmodule Mailmaid.SMTP.Protocol do
       read_message: false,
       backlog: [],
       ssl_options: []
+    ]
   end
 
   @moduledoc """
@@ -505,7 +511,7 @@ defmodule Mailmaid.SMTP.Protocol do
               callback_state: state.session_module.handle_STARTTLS(state.callback_state)
             }
 
-            {:ok, state, [socket: socket, transport: :ranch_ssl]}
+            {:ok, %{state | socket: socket, transport: :ranch_ssl}}
 
           {:error, _} ->
             Logger.warn "TLS negotiation failed"
@@ -642,9 +648,10 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
-  def end_loop(_socket, _transport, reason, state) do
+  @spec end_loop(term, map) :: {:stop, term, map}
+  def end_loop(reason, state) do
     state.session_module.terminate(reason, state.callback_state)
-    exit(reason)
+    {:stop, reason, state}
   end
 
   def trim_pdu(pdu) do
@@ -676,73 +683,91 @@ defmodule Mailmaid.SMTP.Protocol do
     handle(socket, transport, {pdu, ""}, state)
   end
 
-  def loop(socket, transport, %{backlog: []} = state) do
-    case transport.recv(socket, 0, @timeout) do
+  def loop(%{backlog: []} = state) do
+    case state.transport.recv(state.socket, 0, @timeout) do
       {:ok, data} ->
-        case handle_pdu(socket, transport, data, state) do
+        case handle_pdu(state.socket, state.transport, data, state) do
           {:ok, %{read_message: true} = state} ->
-            state = receive_data(socket, transport, state)
-            transport.setopts(socket, [packet: :line])
-            loop socket, transport, state
+            state = receive_data(state.socket, state.transport, state)
+            state.transport.setopts(state.socket, [packet: :line])
+            loop state
 
-          {:ok, state} ->
-            loop(socket, transport, state)
-          {:ok, state, options} ->
-            loop(options[:socket] || socket, options[:transport] || transport, state)
+          {:ok, state} -> loop(state)
           other -> other
         end
       {:error, reason} ->
-        :ok = transport.close(socket)
-        end_loop(socket, transport, reason, state)
+        :ok = state.transport.close(state.socket)
+        end_loop(reason, state)
     end
   end
 
-  def loop(socket, transport, %{backlog: [packet | packets]} = state) do
+  def loop(%{backlog: [packet | packets]} = state) do
     state = %{state | backlog: packets}
-    case handle_pdu(socket, transport, packet, state) do
+    case handle_pdu(state.socket, state.transport, packet, state) do
       {:ok, %{read_message: true} = state} ->
-        state = receive_data(socket, transport, state)
-        transport.setopts(socket, [packet: :line])
-        loop socket, transport, state
+        state = receive_data(state.socket, state.transport, state)
+        state.transport.setopts(state.socket, [packet: :line])
+        loop state
 
-      {:ok, state} -> loop(socket, transport, state)
-      {:ok, state, options} ->
-        loop(options[:socket] || socket, options[:transport] || transport, state)
+      {:ok, state} -> loop(state)
       other -> other
     end
   end
 
-  def init(ref, socket, transport, opts \\ []) do
-    :ok = Ranch.accept_ack(ref)
+  def callback_mode, do: [:handle_event_function, :state_enter]
 
-    transport.setopts(socket, [packet: :line])
-    state = Enum.into(opts, %{})
-    state = struct(State, state)
+  def handle_event(:enter, _event, :wait_for_ack, state) do
+    {:keep_state, state}
+  end
+
+  def handle_event(:info, {:shoot, _module, transport, _port, timeout}, :wait_for_ack, state) do
+    :ok = transport.accept_ack(state.socket, timeout)
+    {:next_state, :protocol_loop, state}
+  end
+
+  def handle_event(:enter, _event, :protocol_loop, state) do
+    {:keep_state, state, [{:state_timeout, 0, :start_loop}]}
+  end
+
+  def handle_event(:state_timeout, :start_loop, :protocol_loop, state) do
+    :ok = state.transport.setopts(state.socket, [packet: :line])
     state = put_in(state.hostname, "#{state.hostname || :smtp_util.guess_FQDN()}")
-    {:ok, {peer_name, _port}} = transport.peername(socket)
+    {:ok, {peer_name, _port}} = state.transport.peername(state.socket)
+
     callbackoptions = Keyword.get(state.session_options, :callbackoptions, [])
+
     case state.session_module.init(state.hostname, 1, peer_name, callbackoptions) do
       {:ok, banner, callback_state} ->
-        transport.send(socket, ["220 ", banner, "\r\n"])
+        state.transport.send(state.socket, ["220 ", banner, "\r\n"])
         state = put_in(state.callback_state, callback_state)
-        case loop(socket, transport, state) do
-          {:stop, reason, state} -> end_loop(socket, transport, reason, state)
-          {:error, reason} -> end_loop(socket, transport, reason, state)
+        case loop(state) do
+          {:stop, reason, state} -> end_loop(reason, state)
+          {:error, reason} -> end_loop(reason, state)
         end
 
       {:stop, reason, message} ->
-        transport.send(socket, [message, "\r\n"])
-        :ok = transport.close(socket)
-        exit(reason)
+        state.transport.send(state.socket, [message, "\r\n"])
+        :ok = state.transport.close(state.socket)
+        {:stop, reason, state}
 
       :ignore ->
-        :ok = transport.close(socket)
-        exit(:normal)
+        :ok = state.transport.close(state.socket)
+        {:stop, :normal, state}
     end
   end
 
+  def handle_event(type, content, action, state) do
+    IO.inspect "Unhandled Event: type=#{type} content=#{inspect content} action=#{action}"
+    {:keep_state, state}
+  end
+
+  def init([ref, socket, transport, opts]) do
+    state = struct(State, Enum.into(opts, %{}))
+    state = %{state | ref: ref, socket: socket, transport: transport}
+    {:ok, :wait_for_ack, state}
+  end
+
   def start_link(ref, socket, transport, opts) do
-    pid = spawn_link(__MODULE__, :init, [ref, socket, transport, opts])
-    {:ok, pid}
+    :gen_statem.start_link(__MODULE__, [ref, socket, transport, opts], [])
   end
 end
