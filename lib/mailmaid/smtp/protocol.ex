@@ -648,12 +648,6 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
-  @spec end_loop(term, map) :: {:stop, term, map}
-  def end_loop(reason, state) do
-    state.session_module.terminate(reason, state.callback_state)
-    {:stop, reason, state}
-  end
-
   def trim_pdu(pdu) do
     pdu
     |> String.trim_trailing("\n")
@@ -683,34 +677,43 @@ defmodule Mailmaid.SMTP.Protocol do
     handle(socket, transport, {pdu, ""}, state)
   end
 
-  def loop(%{backlog: []} = state) do
-    case state.transport.recv(state.socket, 0, @timeout) do
-      {:ok, data} ->
-        case handle_pdu(state.socket, state.transport, data, state) do
-          {:ok, %{read_message: true} = state} ->
-            state = receive_data(state.socket, state.transport, state)
-            state.transport.setopts(state.socket, [packet: :line])
-            loop state
-
-          {:ok, state} -> loop(state)
-          other -> other
-        end
-      {:error, reason} ->
-        :ok = state.transport.close(state.socket)
-        end_loop(reason, state)
+  @spec end_loop(term, map) :: {:stop, term, map}
+  def end_loop(reason, state) do
+    :ok = state.transport.close(state.socket)
+    case reason do
+      :ignore -> {:stop, :normal, state}
+      :normal -> {:stop, :normal, state}
+      {:error, :closed} -> {:stop, :normal, state}
+      _ -> {:stop, reason, state}
     end
   end
 
-  def loop(%{backlog: [packet | packets]} = state) do
-    state = %{state | backlog: packets}
-    case handle_pdu(state.socket, state.transport, packet, state) do
+  def loop(%{backlog: []} = state) do
+    case state.transport.recv(state.socket, 0, @timeout) do
+      {:ok, pdu} ->
+        case handle_pdu(state.socket, state.transport, pdu, state) do
+          {:ok, %{read_message: true} = state} ->
+            state = receive_data(state.socket, state.transport, state)
+            state.transport.setopts(state.socket, [packet: :line])
+            loop(state)
+
+          {:ok, state} -> loop(state)
+          {:error, _} = err -> end_loop(err, state)
+        end
+      {:error, _} = err -> end_loop(err, state)
+    end
+  end
+
+  def loop(%{backlog: [pdu | pdus]} = state) do
+    state = %{state | backlog: pdus}
+    case handle_pdu(state.socket, state.transport, pdu, state) do
       {:ok, %{read_message: true} = state} ->
         state = receive_data(state.socket, state.transport, state)
         state.transport.setopts(state.socket, [packet: :line])
-        loop state
+        loop(state)
 
       {:ok, state} -> loop(state)
-      other -> other
+      {:error, _} = err -> end_loop(err, state)
     end
   end
 
@@ -740,25 +743,25 @@ defmodule Mailmaid.SMTP.Protocol do
       {:ok, banner, callback_state} ->
         state.transport.send(state.socket, ["220 ", banner, "\r\n"])
         state = put_in(state.callback_state, callback_state)
-        case loop(state) do
-          {:stop, reason, state} -> end_loop(reason, state)
-          {:error, reason} -> end_loop(reason, state)
-        end
+        loop(state)
 
       {:stop, reason, message} ->
         state.transport.send(state.socket, [message, "\r\n"])
-        :ok = state.transport.close(state.socket)
-        {:stop, reason, state}
+        end_loop(reason, state)
 
       :ignore ->
-        :ok = state.transport.close(state.socket)
-        {:stop, :normal, state}
+        end_loop(:ignore, state)
     end
   end
 
   def handle_event(type, content, action, state) do
     IO.inspect "Unhandled Event: type=#{type} content=#{inspect content} action=#{action}"
     {:keep_state, state}
+  end
+
+  def terminate(reason, _action, state) do
+    state.session_module.terminate(reason, state.callback_state)
+    :normal
   end
 
   def init([ref, socket, transport, opts]) do
