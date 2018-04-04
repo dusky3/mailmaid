@@ -470,7 +470,7 @@ defmodule Mailmaid.SMTP.Protocol do
 
   def handle(socket, transport, {"QUIT", _}, state) do
     transport.send(socket, "221 BYE\r\n")
-    {:stop, :normal, state}
+    {:stop, :quit, state}
   end
 
   def handle(socket, transport, {"VRFY", addr}, state) do
@@ -683,37 +683,36 @@ defmodule Mailmaid.SMTP.Protocol do
     case reason do
       :ignore -> {:stop, :normal, state}
       :normal -> {:stop, :normal, state}
+      :quit -> {:stop, :normal, state}
       {:error, :closed} -> {:stop, :normal, state}
       _ -> {:stop, reason, state}
     end
   end
 
+  defp do_handle_pdu(pdu, state) do
+    case handle_pdu(state.socket, state.transport, pdu, state) do
+      {:ok, %{read_message: true} = state} ->
+        state = receive_data(state.socket, state.transport, state)
+        :ok = state.transport.setopts(state.socket, [packet: :line])
+        {:loop, state}
+      {:ok, state} -> {:loop, state}
+      {:error, _} = err -> end_loop(err, state)
+      {:stop, reason, state} -> end_loop(reason, state)
+    end
+  end
+
   def loop(%{backlog: []} = state) do
     case state.transport.recv(state.socket, 0, @timeout) do
-      {:ok, pdu} ->
-        case handle_pdu(state.socket, state.transport, pdu, state) do
-          {:ok, %{read_message: true} = state} ->
-            state = receive_data(state.socket, state.transport, state)
-            state.transport.setopts(state.socket, [packet: :line])
-            loop(state)
-
-          {:ok, state} -> loop(state)
-          {:error, _} = err -> end_loop(err, state)
-        end
+      {:ok, pdu} -> loop(%{state | backlog: [pdu]})
       {:error, _} = err -> end_loop(err, state)
     end
   end
 
   def loop(%{backlog: [pdu | pdus]} = state) do
     state = %{state | backlog: pdus}
-    case handle_pdu(state.socket, state.transport, pdu, state) do
-      {:ok, %{read_message: true} = state} ->
-        state = receive_data(state.socket, state.transport, state)
-        state.transport.setopts(state.socket, [packet: :line])
-        loop(state)
-
-      {:ok, state} -> loop(state)
-      {:error, _} = err -> end_loop(err, state)
+    case do_handle_pdu(pdu, state) do
+      {:loop, state} -> loop(state)
+      {:stop, _, state} = res -> res
     end
   end
 
