@@ -42,7 +42,7 @@ defmodule Mailmaid.SMTP.Protocol do
   @moduledoc """
   Port of gen_smtp using Ranch as the listener handler.
   """
-  alias :ranch, as: Ranch
+  #alias :ranch, as: Ranch
 
   @maximum_size 10485760
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
@@ -712,7 +712,7 @@ defmodule Mailmaid.SMTP.Protocol do
     state = %{state | backlog: pdus}
     case do_handle_pdu(pdu, state) do
       {:loop, state} -> loop(state)
-      {:stop, _, state} = res -> res
+      {:stop, _reason, _state} = res -> res
     end
   end
 
