@@ -666,7 +666,8 @@ defmodule Mailmaid.SMTP.Protocol do
         cmd = case String.upcase(cmd) do
           "QUIT" -> "QUIT"
           "DATA" -> "DATA"
-          _ -> cmd
+          "NOOP" -> "NOOP"
+          v -> v
         end
         handle(socket, transport, {cmd, ""}, state)
     end
