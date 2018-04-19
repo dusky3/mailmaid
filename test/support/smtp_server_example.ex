@@ -116,7 +116,7 @@ defmodule Mailmaid.SMTP.ServerExample do
     {["500 Error: command not recognized : '", verb, "'"], state}
   end
 
-  def handle_AUTH(type, <<"username">>, <<"PaSSw0rd">>, state) when type == :login or type == :plain do
+  def handle_AUTH(type, <<"username">>, <<"PaSSw0rd">>, state) when type in [:login, :plain] do
     {:ok, state}
   end
 
