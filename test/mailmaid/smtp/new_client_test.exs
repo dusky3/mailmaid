@@ -155,6 +155,65 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
       end
     end
 
+    describe "MAIL" do
+      setup %{socket: socket} = tags do
+        {:ok, socket, _features} = CMD.ehlo(socket, "client-test.localhost")
+        {:ok, %{tags | socket: socket}}
+      end
+
+      test "will send a MAIL FROM command", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.mail_from(socket, "john.doe@example.com")
+
+        assert ["250 Sender OK\r\n"] == messages
+      end
+
+      test "will handle errors", %{socket: socket} do
+        assert {:error, _socket, {:permanent_failure, messages}} = CMD.mail_from(socket, "badguy@blacklist.com")
+
+        assert ["552 go away\r\n"] == messages
+      end
+    end
+
+    describe "RCPT" do
+      setup %{socket: socket} = tags do
+        {:ok, socket, _features} = CMD.ehlo(socket, "client-test.localhost")
+        {:ok, socket, _messages} = CMD.mail_from(socket, "john.doe@example.com")
+        {:ok, %{tags | socket: socket}}
+      end
+
+      test "will send a RCPT TO command", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.rcpt_to(socket, "sally.sue@example.com")
+
+        assert ["250 Recipient OK\r\n"] == messages
+      end
+
+      test "will handle errors", %{socket: socket} do
+        assert {:error, _socket, {:permanent_failure, messages}} = CMD.rcpt_to(socket, "nobody@example.com")
+        assert ["550 No such recipient\r\n"] == messages
+      end
+    end
+
+    describe "DATA" do
+      setup %{socket: socket} = tags do
+        {:ok, socket, _features} = CMD.ehlo(socket, "client-test.localhost")
+        {:ok, socket, _messages} = CMD.mail_from(socket, "john.doe@example.com")
+        {:ok, socket, _messages} = CMD.rcpt_to(socket, "sally.sue@example.com")
+        {:ok, %{tags | socket: socket}}
+      end
+
+      test "will send a DATA command", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.data(socket, "Hello, World")
+
+        assert ["250 queued as Accepted\r\n"] == messages
+      end
+
+      test "will handle errors", %{socket: socket} do
+        assert {:error, _socket, {:permanent_failure, messages}} = CMD.data(socket, "")
+
+        assert ["552 Message too small\r\n"] == messages
+      end
+    end
+
     describe "QUIT" do
       test "will handle noop response", %{socket: socket} do
         assert {:ok, _socket, messages} = CMD.quit(socket)

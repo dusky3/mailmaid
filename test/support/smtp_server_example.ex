@@ -56,7 +56,7 @@ defmodule Mailmaid.SMTP.ServerExample do
     {:ok, my_extensions, state}
   end
 
-  def handle_MAIL(<<"badguy@blacklist.com">>, state) do
+  def handle_MAIL("badguy@blacklist.com", state) do
     {:error, "552 go away", state}
   end
 
@@ -81,7 +81,7 @@ defmodule Mailmaid.SMTP.ServerExample do
   end
 
   def handle_RCPT(to, state) do
-    Logger.warn ["Unknown RCPT TO ", to]
+    Logger.info ["RCPT TO ", to]
     {:ok, state}
   end
 
