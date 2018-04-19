@@ -1,3 +1,4 @@
+require Logger
 alias Mailmaid.SMTP.Client.Connection, as: CC
 alias Mailmaid.SMTP.Client.Commands, as: CMD
 
@@ -15,11 +16,18 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
       {:port, port},
       {:sessionoptions, [
         callbackoptions: [auth: true]
-      ]}
+      ]},
+      {:ssl_options,
+        [
+          {:keyfile, "test/fixtures/server.key"},
+          {:certfile, "test/fixtures/server.crt"}
+        ]
+      }
       | additional_options
     ]
+    Logger.debug ["Staring Server ", "hostname=", server_options[:hostname], " port=", inspect(server_options[:port]), " protocol=", inspect(server_options[:protocol])]
     {:ok, pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [server_options])
-    {:ok, %{server_pid: pid, hostname: hostname, port: server_options[:port]}}
+    {:ok, Map.merge(options, %{server_pid: pid, hostname: hostname, port: server_options[:port]})}
   end
 
   defmodule ConnectionTest do
@@ -32,9 +40,20 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
       Mailmaid.SMTP.Client.NewClientTest.setup_server(options)
     end
 
-    describe "open" do
+    describe "open tcp connection" do
       test "it will open a new smtp connection to server", %{hostname: hostname, port: port} do
         assert {:ok, socket, {:tcp, hostname, ^port}, [banner]} = CC.open(hostname, port: port)
+
+        assert 'mailmaid.localhost' == hostname
+        assert "220 mailmaid.localhost ESMTP Mailmaid.SMTP.ServerExample\r\n" == banner
+        :ok = CC.close(socket)
+      end
+    end
+
+    describe "open ssl/tls connection" do
+      @tag protocol: :ssl
+      test "it will open a new smtp connection to server", %{hostname: hostname, port: port} do
+        assert {:ok, socket, {:ssl, hostname, ^port}, [banner]} = CC.open(hostname, port: port, protocol: :ssl)
 
         assert 'mailmaid.localhost' == hostname
         assert "220 mailmaid.localhost ESMTP Mailmaid.SMTP.ServerExample\r\n" == banner
@@ -49,7 +68,7 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
     setup options do
       protocol = options[:protocol] || :tcp
       {:ok, %{hostname: hostname, port: port} = options} = Mailmaid.SMTP.Client.NewClientTest.setup_server(options)
-      {:ok, socket, {^protocol, _hostname, ^port}, [banner]} = CC.open(hostname, port: port)
+      {:ok, socket, {^protocol, _hostname, ^port}, [banner]} = CC.open(hostname, port: port, protocol: protocol)
       on_exit(fn ->
         :ok = CC.close(socket)
         :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
@@ -77,6 +96,18 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
           "554 invalid hostname\r\n"
         ] == messages
       end
+
+      @tag protocol: :ssl
+      test "will not include STARTTLS for a TLS connection", %{socket: socket} do
+        assert {:ok, _socket, features} = CMD.ehlo(socket, "client-test.localhost")
+        assert [
+          "250-mailmaid.localhost\r\n",
+          "250-SIZE 10485670\r\n",
+          "250-8BITMIME\r\n",
+          "250-PIPELINING\r\n",
+          "250 AUTH PLAIN LOGIN CRAM-MD5\r\n",
+        ] == features
+      end
     end
 
     describe "HELO" do
@@ -93,6 +124,19 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
         assert [
           "554 invalid hostname\r\n"
         ] == messages
+      end
+    end
+
+    describe "STARTTLS" do
+      setup %{socket: socket} = tags do
+        {:ok, socket, _features} = CMD.ehlo(socket, "client-test.localhost")
+        {:ok, %{tags | socket: socket}}
+      end
+
+      test "will start a TLS connection", %{socket: socket} do
+        assert {:ok, _ssl_socket, messages} = CMD.starttls(socket)
+
+        assert [] == messages
       end
     end
 
@@ -220,6 +264,17 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
 
         assert ["221 BYE\r\n"] == messages
       end
+    end
+
+    @tag protocol: :ssl
+    test "common commands for a session (ssl)", %{socket: socket} do
+      assert {:ok, _socket, _messages} = CMD.noop(socket)
+      assert {:ok, _socket, _messages} = CMD.ehlo(socket, "ssl-test.localhost")
+      assert {:ok, _socket, _messages} = CMD.auth(socket, "LOGIN", "username", "PaSSw0rd")
+      assert {:ok, _socket, _messages} = CMD.mail_from(socket, "john.doe@example.com")
+      assert {:ok, _socket, _messages} = CMD.rcpt_to(socket, "sally.sue@example.com")
+      assert {:ok, _socket, _messages} = CMD.data(socket, "Hello, World")
+      assert {:ok, _socket, _messages} = CMD.quit(socket)
     end
   end
 end

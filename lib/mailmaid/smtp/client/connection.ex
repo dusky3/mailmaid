@@ -24,6 +24,7 @@ defmodule Mailmaid.SMTP.Client.Connection do
 
     protocol = cond do
       Keyword.has_key?(options, :protocol) ->
+        #Logger.debug ["explicit protocol given ", inspect(options[:protocol])]
         options[:protocol]
 
       Keyword.has_key?(options, :ssl) ->
@@ -50,6 +51,8 @@ defmodule Mailmaid.SMTP.Client.Connection do
 
     case :socket.connect(protocol, hostname, port, socket_options, connect_timeout) do
       {:ok, socket} ->
+        #IO.inspect socket
+        #Logger.debug ["Connected successfully, waiting for banner protocol=", inspect(protocol)]
         case read_possible_multiline_reply(socket) do
           {:ok, socket, ["220" <> _banner | _rest] = messages} ->
             {:ok, socket, {protocol, hostname, port}, messages}
