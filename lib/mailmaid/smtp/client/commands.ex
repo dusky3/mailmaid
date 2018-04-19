@@ -1,6 +1,8 @@
 require Logger
 
 defmodule Mailmaid.SMTP.Client.Commands do
+  @type socket :: port
+  @type command_response_t :: {:ok, socket, [String.t]} | {:error, socket, {atom, atom | String.t | [String.t]}}
   @default_timeout 1_200_000
 
   def read_multiline_reply(socket, code, acc, timeout \\ @default_timeout) do
@@ -61,25 +63,30 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
-  @spec send_line(Port.t, String.t | list) :: :ok | {:error, term}
+  @spec send_line(socket, String.t | list) :: :ok | {:error, term}
   def send_line(socket, line) do
     data = [line, "\r\n"]
     :socket.send(socket, data)
   end
 
+  @spec cmd(socket, String.t, [String.t]) :: command_response_t
   def cmd(socket, cmd, args \\ [])
   def cmd(socket, cmd, []), do: send_line(socket, [cmd])
   def cmd(socket, cmd, args), do: send_line(socket, [cmd, " ", args])
 
+  @spec ehlo(socket, String.t) :: command_response_t
   def ehlo(socket, domain) do
     cmd(socket, "EHLO", [domain])
     read_and_handle_common_reply(socket)
   end
 
+  @spec helo(socket, String.t) :: command_response_t
   def helo(socket, domain) do
     cmd(socket, "HELO", [domain])
     read_and_handle_common_reply(socket)
   end
+
+  @spec auth(socket, String.t, String.t, String.t) :: command_response_t
 
   def auth(socket, "PLAIN", username, password) do
     auth_string64 = Base.encode64("\0#{username}\0#{password}")
@@ -142,16 +149,19 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
+  @spec mail_from(socket, String.t) :: command_response_t
   def mail_from(socket, address) do
     cmd(socket, "MAIL", ["FROM: ", wrap_address(address)])
     read_and_handle_common_reply(socket)
   end
 
+  @spec rcpt_to(socket, String.t) :: command_response_t
   def rcpt_to(socket, address) do
     cmd(socket, "RCPT", ["TO: ", wrap_address(address)])
     read_and_handle_common_reply(socket)
   end
 
+  @spec data(socket, String.t) :: command_response_t
   def data(socket, body) do
     cmd(socket, "DATA")
     case read_possible_multiline_reply(socket) do
@@ -165,6 +175,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
+  @spec starttls(socket) :: command_response_t
   def starttls(socket) do
     cmd(socket, "STARTTLS")
     case read_possible_multiline_reply(socket) do
@@ -182,19 +193,35 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
+  @spec help(socket) :: command_response_t
   def help(socket) do
     cmd(socket, "HELP")
     read_and_handle_common_reply(socket)
   end
 
+  @spec noop(socket) :: command_response_t
   def noop(socket) do
     cmd(socket, "NOOP")
     read_and_handle_common_reply(socket)
   end
 
-  def quit(socket) do
+  @spec vrfy(socket, String.t) :: command_response_t
+  def vrfy(socket, address) do
+    cmd(socket, "VRFY", [address])
+    read_and_handle_common_reply(socket)
+  end
+
+  @spec quit(socket, non_neg_integer) :: command_response_t
+  def quit(socket, timeout \\ 15000) do
     cmd(socket, "QUIT")
-    :socket.close(socket)
-    {:ok, socket, []}
+    case read_possible_multiline_reply(socket, 5000) do
+      {_, socket, messages} when is_list(messages) ->
+        :socket.close(socket)
+        {:ok, socket, messages}
+
+      {:error, socket, messages} ->
+        :socket.close(socket)
+        {:error, socket, messages}
+    end
   end
 end

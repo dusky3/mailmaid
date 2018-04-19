@@ -69,6 +69,14 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
           "250 STARTTLS\r\n",
         ] == features
       end
+
+      test "will handle errors", %{socket: socket} do
+        assert {:error, _socket, {:permanent_failure, messages}} = CMD.ehlo(socket, "invalid")
+
+        assert [
+          "554 invalid hostname\r\n"
+        ] == messages
+      end
     end
 
     describe "HELO" do
@@ -76,6 +84,14 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
         assert {:ok, _socket, messages} = CMD.helo(socket, "client-test.localhost")
         assert [
           "250 mailmaid.localhost\r\n",
+        ] == messages
+      end
+
+      test "will handle errors", %{socket: socket} do
+        assert {:error, _socket, {:permanent_failure, messages}} = CMD.helo(socket, "invalid")
+
+        assert [
+          "554 invalid hostname\r\n"
         ] == messages
       end
     end
@@ -120,6 +136,30 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
       test "when invalid username is given for AUTH CRAM-MD5", %{socket: socket} do
         assert {:error, _socket, {:auth_error, messages}} = CMD.auth(socket, "CRAM-MD5", "nottheuser", "PaSSw0rd")
         assert ["535 Authentication failed\r\n"] == messages
+      end
+    end
+
+    describe "VRFY" do
+      test "will handle VRFY response", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.vrfy(socket, "someuser")
+
+        assert ["250 someuser@" <> _rest] = messages
+      end
+    end
+
+    describe "NOOP" do
+      test "will handle noop response", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.noop(socket)
+
+        assert ["250 OK\r\n"] == messages
+      end
+    end
+
+    describe "QUIT" do
+      test "will handle noop response", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.quit(socket)
+
+        assert ["221 BYE\r\n"] == messages
       end
     end
   end

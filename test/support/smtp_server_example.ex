@@ -1,3 +1,5 @@
+require Logger
+
 defmodule Mailmaid.SMTP.ServerExample do
   defmodule State do
     defstruct [options: []]
@@ -12,10 +14,10 @@ defmodule Mailmaid.SMTP.ServerExample do
   @behaviour Mailmaid.SMTP.Server.Session
 
   def init(hostname, session_count, address, options) do
-    :io.format("peer: ~p~n", [address])
+    Logger.info ["Peer: ", inspect(address)]
 
     if session_count > 20 do
-      :io.format("Connection limit exceeded~n")
+      Logger.error "Connecting limit exceeded"
       {:stop, :normal, ["421 ", hostname, " is too busy to accept mail right now"]}
     else
       banner = [hostname, " ESMTP Mailmaid.SMTP.ServerExample"]
@@ -24,25 +26,26 @@ defmodule Mailmaid.SMTP.ServerExample do
     end
   end
 
-  def handle_HELO(<<"invalid">>, extensions, state) do
+  def handle_HELO(<<"invalid">>, state) do
     {:error, "554 invalid hostname", state}
   end
 
-  def handle_HELO(<<"trusted_host">>, extensions, state) do
+  def handle_HELO(<<"trusted_host">>, state) do
     {:ok, state}
   end
 
   def handle_HELO(hostname, state) do
-    :io.format("HELO from ~s~n", [hostname])
+    IO.inspect hostname
+    Logger.info ["HELO from ", hostname]
     {:ok, 655360, state}
   end
 
-  def handle_EHLO(<<"invalid">>, extensions, state) do
+  def handle_EHLO(<<"invalid">>, _extensions, state) do
     {:error, "554 invalid hostname", state}
   end
 
   def handle_EHLO(hostname, extensions, state) do
-    :io.format("EHLO from ~s~n", [hostname])
+    Logger.info ["EHLO from ", hostname]
 
     my_extensions = if Keyword.get(state.options, :auth, false) do
       extensions ++ [{"AUTH", "PLAIN LOGIN CRAM-MD5"}, {"STARTTLS", true}]
@@ -58,18 +61,18 @@ defmodule Mailmaid.SMTP.ServerExample do
   end
 
   def handle_MAIL(from, state) do
-    :io.format("Mail from ~s~n", [from])
+    Logger.info ["MAIL FROM ", from]
     {:ok, state}
   end
 
-  def handle_MAIL_extension(<<"X-SomeExtension">> = extension, state) do
-    :io.format("Mail from extension ~s~n", [extension])
+  def handle_MAIL_extension("X-SomeExtension" = extension, state) do
+    Logger.info ["MAIL FROM extension", extension]
 
     {:ok, state}
   end
 
   def handle_MAIL_extension(extension, state) do
-    :io.format("Unknown MAIL FROM extension ~s~n", [extension])
+    Logger.warn ["Unknown MAIL FROM extension", extension]
     :error
   end
 
@@ -78,17 +81,17 @@ defmodule Mailmaid.SMTP.ServerExample do
   end
 
   def handle_RCPT(to, state) do
-    :io.format("Mail to ~s~n", [to])
+    Logger.warn ["Unknown RCPT TO ", to]
     {:ok, state}
   end
 
-  def handle_RCPT_extension(<<"X-SomeExtension">> =extension, state) do
-    :io.format("Mail to extension ~s~n", [extension])
+  def handle_RCPT_extension(<<"X-SomeExtension">> = extension, state) do
+    Logger.warn ["RCPT TO extension ", extension]
     {:ok, state}
   end
 
   def handle_RCPT_extension(extension, _state) do
-    :io.format("Unknown RCPT TO extension ~s~n", [extension])
+    Logger.warn ["Unknown RCPT TO extension ", extension]
     :error
   end
 
