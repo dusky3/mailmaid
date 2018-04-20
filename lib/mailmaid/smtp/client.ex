@@ -1,3 +1,5 @@
+require Logger
+
 defmodule Mailmaid.SMTP.Client do
   alias Mailmaid.SMTP.Client.Connection
   alias Mailmaid.SMTP.Client.Commands
@@ -38,12 +40,13 @@ defmodule Mailmaid.SMTP.Client do
 
   # yeah... EHLO and HELO commands...
   defp introduce_yourself(socket, options) do
-    case Commands.ehlo(socket, options.hostname) do
+    hostname = to_string(options.hostname)
+    case Commands.ehlo(socket, hostname) do
       {:ok, socket, messages} ->
         {_remote_hostname, extensions} = Commands.parse_extensions(messages)
         {:ok, socket, extensions}
       {:error, socket, {:permanent_failure, _messages}} ->
-        Commands.helo(socket, options.hostname)
+        Commands.helo(socket, hostname)
     end
   end
 
@@ -114,6 +117,17 @@ defmodule Mailmaid.SMTP.Client do
     end
   end
 
+  defp set_recipients(socket, []) do
+    {:ok, socket, []}
+  end
+
+  defp set_recipients(socket, [recipient | rest]) do
+    case Commands.rcpt_to(socket, recipient) do
+      {:ok, socket, _} -> set_recipients(socket, rest)
+      {:error, socket, _} = err -> err
+    end
+  end
+
   @spec try_smtp_session_sending(email_items, Commands.socket, map, map, receipt_items) :: {:ok, Commands.socket, receipt_items}
   defp try_smtp_session_sending([], socket, _extensions, _options, receipts) do
     {:ok, socket, Enum.reverse(receipts)}
@@ -128,7 +142,7 @@ defmodule Mailmaid.SMTP.Client do
     end
     {status, socket, msg} =
       with {:ok, socket, _} <- Commands.mail_from(socket, from),
-           {:ok, socket, _} <- Commands.rcpt_to(socket, to) do
+           {:ok, socket, _} <- set_recipients(socket, to) do
         Commands.data(socket, body)
       else
         {:error, _, _} = err -> err
@@ -207,5 +221,18 @@ defmodule Mailmaid.SMTP.Client do
       end
 
     try_smtp_sessions(hosts, List.wrap(emails), options, [])
+  end
+
+  def process_options(options) do
+    Logger.warn "process_options is deprecated, this function is kept for compatibility with the LegacyClient"
+    options = Mailmaid.SMTP.LegacyClient.process_options(options)
+    protocol = if options[:ssl] do :ssl else :tcp end
+    options
+    |> Keyword.drop([:auth, :tls, :ssl])
+    |> Keyword.merge(
+      upgrade_to_tls: options[:tls] || options[:upgrade_to_tls],
+      use_auth: options[:auth] || options[:use_auth],
+      procotol: options[:procotol] || protocol
+    )
   end
 end

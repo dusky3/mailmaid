@@ -1,23 +1,21 @@
 require Logger
 
 defmodule Mailmaid.SMTP.LegacyClient do
-  @default_options [
-    ssl: false,
-    tls: :if_available,
-    auth: :if_available,
-    hostname: :smtp_util.guess_FQDN(),
-    retries: 1
-  ] |> Enum.sort()
-
   import Mailmaid.SMTP.Client.Socket
 
-  def process_options(options) do
-    options =
-      options
-      |> Mailmaid.SMTP.URI.process_mailer_config()
-      |> Enum.sort()
+  defp default_options do
+    [
+      ssl: false,
+      tls: :if_available,
+      auth: :if_available,
+      hostname: :smtp_util.guess_FQDN(),
+      retries: 1
+    ]
+  end
 
-    Keyword.merge(@default_options, options)
+  def process_options(options) do
+    options = Mailmaid.SMTP.URI.process_mailer_config(options)
+    Keyword.merge(default_options(), options)
   end
 
   def send(email, options) do

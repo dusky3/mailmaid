@@ -98,13 +98,13 @@ defmodule Mailmaid.SMTP.Client.Commands do
   def cmd(socket, cmd, args), do: send_line(socket, [cmd, " ", args])
 
   @spec ehlo(socket, String.t) :: command_response_t
-  def ehlo(socket, domain) do
+  def ehlo(socket, domain) when is_binary(domain) do
     cmd(socket, "EHLO", [domain])
     read_and_handle_common_reply(socket)
   end
 
   @spec helo(socket, String.t) :: command_response_t
-  def helo(socket, domain) do
+  def helo(socket, domain) when is_binary(domain) do
     cmd(socket, "HELO", [domain])
     read_and_handle_common_reply(socket)
   end
@@ -173,19 +173,19 @@ defmodule Mailmaid.SMTP.Client.Commands do
   end
 
   @spec mail_from(socket, String.t) :: command_response_t
-  def mail_from(socket, address) do
+  def mail_from(socket, address) when is_binary(address) do
     cmd(socket, "MAIL", ["FROM: ", wrap_address(address)])
     read_and_handle_common_reply(socket)
   end
 
   @spec rcpt_to(socket, String.t) :: command_response_t
-  def rcpt_to(socket, address) do
+  def rcpt_to(socket, address) when is_binary(address) do
     cmd(socket, "RCPT", ["TO: ", wrap_address(address)])
     read_and_handle_common_reply(socket)
   end
 
   @spec data(socket, String.t) :: command_response_t
-  def data(socket, body) do
+  def data(socket, body) when is_binary(body) do
     cmd(socket, "DATA")
     case read_possible_multiline_reply(socket) do
       {:ok, socket, [<<"354", _line :: binary>> | _rest]} ->

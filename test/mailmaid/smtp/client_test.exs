@@ -42,7 +42,7 @@ defmodule Mailmaid.SMTP.ClientTest do
 
   describe "send_blocking" do
     test "will send an mms message over tcp", %{hostname: hostname, port: port} do
-      email = {"john.doe@example.com", "sally.sue@example.com", "Hello, World"}
+      email = {"john.doe@example.com", ["sally.sue@example.com", "sally.sue2@example.com"], "Hello, World"}
       assert {:ok, receipts} = Client.send_blocking(email,
         use_auth: :always,
         username: "username",
@@ -59,7 +59,7 @@ defmodule Mailmaid.SMTP.ClientTest do
 
     @tag protocol: :ssl
     test "will send an mms message over ssl", %{hostname: hostname, port: port} do
-      email = {"john.doe@example.com", "sally.sue@example.com", "Hello, World"}
+      email = {"john.doe@example.com", ["sally.sue@example.com", "sally.sue2@example.com"], "Hello, World"}
       assert {:ok, receipts} = Client.send_blocking(email,
         use_auth: :always,
         username: "username",
