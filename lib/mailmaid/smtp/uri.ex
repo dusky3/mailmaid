@@ -51,7 +51,7 @@ defmodule Mailmaid.SMTP.URI do
         [
           {:username, username},
           {:password, password},
-          {:auth, :if_available}
+          {:auth, :always}
           | options
         ]
 
@@ -98,8 +98,8 @@ defmodule Mailmaid.SMTP.URI do
       "smtp" -> %{options | transport: :mm4}
       "smtps" -> %{options | transport: :mm4, protocol: :ssl}
       "smtp+s" -> %{options | transport: :mm4, upgrade_to_tls: :if_available}
-      "http" -> %{options | scheme: "http", transport: :http}
-      "https" -> %{options | scheme: "https", transport: :http}
+      "http" -> %{options | transport: :http}
+      "https" -> %{options | transport: :http, protocol: :ssl}
     end
 
     options = case user_credentials_from_uri(uri) do

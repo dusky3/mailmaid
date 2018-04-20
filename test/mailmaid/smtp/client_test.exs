@@ -75,6 +75,29 @@ defmodule Mailmaid.SMTP.ClientTest do
       assert [{:ok, nil, ["250 queued as Accepted\r\n"]}] == receipts
     end
   end
+
+  describe "process_options/1" do
+    test "will handle url" do
+      config = %{
+        url: "mm4s://user:pass@example.com:2556"
+      }
+      res = Mailmaid.SMTP.Client.process_options(config)
+      new_config = Enum.into(res, %{})
+
+      assert %{
+        hostname: 'kana',
+        retries: 1,
+        username: "user",
+        password: "pass",
+        port: 2556,
+        scheme: "mm4s",
+        relay: "example.com",
+        upgrade_to_tls: :always,
+        use_auth: :always,
+        procotol: :ssl
+      } == new_config
+    end
+  end
 end
 
 defmodule Mailmaid.SMTP.Client.ConnectionTest do
