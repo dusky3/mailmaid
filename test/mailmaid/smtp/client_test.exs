@@ -94,8 +94,11 @@ defmodule Mailmaid.SMTP.ClientTest do
         relay: "example.com",
         upgrade_to_tls: :always,
         use_auth: :always,
-        procotol: :ssl
+        procotol: :ssl,
+        transport: :mm4,
       } == new_config
+
+      assert res == Mailmaid.SMTP.Client.process_options(config)
     end
   end
 end

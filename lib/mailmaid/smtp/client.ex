@@ -258,8 +258,9 @@ defmodule Mailmaid.SMTP.Client do
     options
     |> Keyword.drop([:auth, :tls, :ssl])
     |> Keyword.merge(
-      upgrade_to_tls: options[:tls] || options[:upgrade_to_tls],
-      use_auth: options[:auth] || options[:use_auth],
+      transport: options[:transport] || :mm4,
+      upgrade_to_tls: options[:upgrade_to_tls] || options[:tls],
+      use_auth: options[:use_auth] || options[:auth],
       procotol: options[:procotol] || protocol
     )
   end
