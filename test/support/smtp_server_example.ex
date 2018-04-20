@@ -11,7 +11,7 @@ defmodule Mailmaid.SMTP.ServerExample do
 
   @relay true
 
-  @behaviour Mailmaid.SMTP.Server.Session
+  use Mailmaid.SMTP.Server
 
   def init(hostname, session_count, address, options) do
     Logger.info ["Peer: ", inspect(address)]
@@ -147,11 +147,11 @@ defmodule Mailmaid.SMTP.ServerExample do
     {:ok, reason, state}
   end
 
-  def relay(_, [], _), do: :ok
+  #def relay(_, [], _), do: :ok
 
-  def relay(from, [to | rest], data) do
-    [_user, host] = String.split(to, "@")
-    Mailmaid.SMTP.Client.send({from, [to], data}, [relay: host])
-    relay(from, rest, data)
-  end
+  #def relay(from, [to | rest], data) do
+  #  [_user, host] = String.split(to, "@")
+  #  Mailmaid.SMTP.Client.send({from, [to], data}, [relay: host])
+  #  relay(from, rest, data)
+  #end
 end

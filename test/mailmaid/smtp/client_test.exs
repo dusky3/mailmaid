@@ -2,7 +2,7 @@ require Logger
 alias Mailmaid.SMTP.Client.Connection, as: CC
 alias Mailmaid.SMTP.Client.Commands, as: CMD
 
-defmodule Mailmaid.SMTP.Client.NewClientTest do
+defmodule Mailmaid.SMTP.ClientTests do
   def setup_server(options) do
     port = options[:port] || 9876
     hostname = "mailmaid.localhost"
@@ -37,7 +37,7 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
       on_exit(fn ->
         :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
       end)
-      Mailmaid.SMTP.Client.NewClientTest.setup_server(options)
+      Mailmaid.SMTP.ClientTests.setup_server(options)
     end
 
     describe "open tcp connection" do
@@ -62,12 +62,38 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
     end
   end
 
+  defmodule CommandsUtilTest do
+    use ExUnit.Case
+
+    describe "parse_extensions" do
+      test "will parse a list of EHLO extensions" do
+        extensions = [
+          "250-mailmaid.localhost\r\n",
+          "250-SIZE 10485670\r\n",
+          "250-8BITMIME\r\n",
+          "250-PIPELINING\r\n",
+          "250-AUTH PLAIN LOGIN CRAM-MD5\r\n",
+          "250 STARTTLS\r\n",
+        ]
+        assert {"mailmaid.localhost", parsed_extensions} = CMD.parse_extensions(extensions)
+
+        assert %{
+          "8BITMIME" => true,
+          "AUTH" => "PLAIN LOGIN CRAM-MD5",
+          "PIPELINING" => true,
+          "SIZE" => "10485670",
+          "STARTTLS" => true
+        } == parsed_extensions
+      end
+    end
+  end
+
   defmodule CommandsTest do
     use ExUnit.Case
 
     setup options do
       protocol = options[:protocol] || :tcp
-      {:ok, %{hostname: hostname, port: port} = options} = Mailmaid.SMTP.Client.NewClientTest.setup_server(options)
+      {:ok, %{hostname: hostname, port: port} = options} = Mailmaid.SMTP.ClientTests.setup_server(options)
       {:ok, socket, {^protocol, _hostname, ^port}, [banner]} = CC.open(hostname, port: port, protocol: protocol)
       on_exit(fn ->
         :ok = CC.close(socket)
@@ -192,8 +218,16 @@ defmodule Mailmaid.SMTP.Client.NewClientTest do
     end
 
     describe "NOOP" do
-      test "will handle noop response", %{socket: socket} do
+      test "will handle NOOP response", %{socket: socket} do
         assert {:ok, _socket, messages} = CMD.noop(socket)
+
+        assert ["250 OK\r\n"] == messages
+      end
+    end
+
+    describe "RSET" do
+      test "will handle RSET response", %{socket: socket} do
+        assert {:ok, _socket, messages} = CMD.rset(socket)
 
         assert ["250 OK\r\n"] == messages
       end

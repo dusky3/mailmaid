@@ -1,9 +1,32 @@
 require Logger
 
 defmodule Mailmaid.SMTP.Client.Commands do
+  alias Mailmaid.SMTP.Client.Connection
   @type socket :: port
   @type command_response_t :: {:ok, socket, [String.t]} | {:error, socket, {atom, atom | String.t | [String.t]}}
   @default_timeout 1_200_000
+
+  @spec parse_extensions([String.t]) :: {String.t, %{String.t => String.t | true}}
+  def parse_extensions([<<_code :: binary-size(3), _spacer :: binary-size(1), hostname :: binary>> | messages]) do
+    extensions =
+      messages
+      |> Enum.map(fn
+        <<_code :: binary-size(3), _spacer :: binary-size(1), rest :: binary>> ->
+          rest
+          |> String.trim()
+          |> String.split(" ", parts: 2, trim: true)
+          |> case do
+            [verb, parameters] ->
+              {String.upcase(verb), parameters}
+            [<<"=", _rest :: binary>>] ->
+              nil
+            [body] -> {String.upcase(body), true}
+          end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.into(%{})
+    {String.trim(hostname), extensions}
+  end
 
   def read_multiline_reply(socket, code, acc, timeout \\ @default_timeout) do
     case :socket.recv(socket, 0, timeout) do
@@ -183,9 +206,9 @@ defmodule Mailmaid.SMTP.Client.Commands do
         case :socket.to_ssl_client(socket, [], 5000) do
           {:ok, ssl_socket} ->
             {:ok, ssl_socket, []}
-          {:error, reason} = err ->
+          {:error, reason} ->
             Logger.error ["Connection upgrade error: ", inspect(reason)]
-            {:error, socket, {:permanent_failure, reason}}
+            {:error, socket, {:upgrade_error, reason}}
         end
       {:ok, socket, [<<"4", _line :: binary>> | _rest] = messages} -> {:error, socket, {:temporary_error, messages}}
       {:ok, socket, messages} -> {:error, socket, {:permanent_failure, messages}}
@@ -211,16 +234,22 @@ defmodule Mailmaid.SMTP.Client.Commands do
     read_and_handle_common_reply(socket)
   end
 
+  @spec rset(socket) :: command_response_t
+  def rset(socket) do
+    cmd(socket, "RSET")
+    read_and_handle_common_reply(socket)
+  end
+
   @spec quit(socket, non_neg_integer) :: command_response_t
   def quit(socket, timeout \\ 15000) do
     cmd(socket, "QUIT")
-    case read_possible_multiline_reply(socket, 5000) do
+    case read_possible_multiline_reply(socket, timeout) do
       {_, socket, messages} when is_list(messages) ->
-        :socket.close(socket)
+        Connection.close(socket)
         {:ok, socket, messages}
 
       {:error, socket, messages} ->
-        :socket.close(socket)
+        Connection.close(socket)
         {:error, socket, messages}
     end
   end
