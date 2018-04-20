@@ -72,14 +72,14 @@ defmodule Mailmaid.SMTP.URI do
   end
 
   @spec parse_legacy(String.t, Keyword.t) :: map
-  def parse(uri, config \\ []) do
+  def parse(uri_s, config \\ []) do
     uri =
-      uri
+      uri_s
       |> Elixir.URI.decode()
       |> Elixir.URI.parse()
 
     options = %{
-      original_uri: uri,
+      original_uri: uri_s,
       transport: :mm4,
       protocol: :tcp,
       relay: uri.host,
