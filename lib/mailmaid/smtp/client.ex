@@ -57,7 +57,7 @@ defmodule Mailmaid.SMTP.Client do
     {:ok, socket, extensions}
   end
 
-  defp try_starttls(socket, extensions, %{procotol: :tcp} = options) do
+  defp try_starttls(socket, extensions, %{procotol: :tcp, upgrade_to_tls: upgrade_to_tls} = options) when upgrade_to_tls in [:always, :if_available] do
     if extensions["STARTTLS"] do
       case Commands.starttls(socket) do
         {:ok, _socket, _messages} ->
