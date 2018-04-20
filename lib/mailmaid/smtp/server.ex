@@ -1,3 +1,5 @@
+require Logger
+
 defmodule Mailmaid.SMTP.Server do
   defmacro __using__(_opts) do
     quote do
@@ -26,6 +28,9 @@ defmodule Mailmaid.SMTP.Server do
       {:certfile, String.t},
     ]},
   ]
+  @type process_options :: [
+    {:name, atom},
+  ]
 
   @doc """
   Starts a new SMTP server listener
@@ -34,8 +39,8 @@ defmodule Mailmaid.SMTP.Server do
   * `session_module` - the callback module and name of the listener
   * `listeners` - a list of keyword lists. For now just wrap the args in a list.
   """
-  @spec start_link(session_module :: atom, listeners :: [listener_config]) :: {:ok, pid} | {:error, term}
-  def start_link(session_module, [listener_options]) do
+  @spec start_link(session_module :: atom, listeners :: [listener_config], process_options) :: {:ok, pid} | {:error, term}
+  def start_link(session_module, [listener_options], process_options \\ []) do
     num_acceptors = 256
     transport_opts = [
       {:port, Keyword.get(listener_options, :port, 2525)},
@@ -43,8 +48,8 @@ defmodule Mailmaid.SMTP.Server do
     ]
     opts = [
       session_module: session_module,
-      hostname: Keyword.get(listener_options, :hostname, :smtp_util.guess_FQDN()),
-      address: Keyword.get(listener_options, :address, {0, 0, 0, 0}),
+      hostname: Keyword.get(listener_options, :hostname) || to_string(:smtp_util.guess_FQDN()),
+      address: Keyword.get(listener_options, :address) || {0, 0, 0, 0},
       session_options: Keyword.get(listener_options, :sessionoptions, []),
       tls: false,
       ssl_options: Keyword.get(listener_options, :ssl_options, []),
@@ -55,6 +60,14 @@ defmodule Mailmaid.SMTP.Server do
         more_options = Keyword.get(listener_options, :ssl_options)
         {:ranch_ssl, transport_opts ++ more_options, Keyword.put(opts, :tls, true)}
     end
-    Ranch.start_listener(session_module, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts)
+    ref = process_options[:name] || session_module
+    Logger.debug [
+      "starting listener",
+      " transport=", inspect(transport),
+      " port=", inspect(transport_opts[:port]),
+      " hostname=", inspect(opts[:hostname]),
+      " address=", inspect(opts[:address]),
+    ]
+    Ranch.start_listener(ref, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts)
   end
 end

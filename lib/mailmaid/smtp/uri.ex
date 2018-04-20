@@ -2,26 +2,37 @@ defmodule Mailmaid.SMTP.URI do
   @moduledoc """
   Handles special uris in mailer config
   """
+
+  @spec user_credentials_from_uri(map) :: {String.t | nil, String.t, String.t | nil}
   def user_credentials_from_uri(%{userinfo: u} = _uri) when is_nil(u) or u == "", do: nil
   def user_credentials_from_uri(%{userinfo: userinfo} = _uri) when is_binary(userinfo) do
     case String.split(userinfo, ":") do
+      [identity, username, password] ->
+        {identity, username, password}
+
       [username, password] ->
-        {username, password}
+        {nil, username, password}
 
       [username] ->
-        {username, username}
+        {nil, username, nil}
     end
   end
 
-  def determine_secure_from_scheme("smtps"), do: {:always, true}
-  def determine_secure_from_scheme("smtp+s"), do: {:if_available, false}
-  def determine_secure_from_scheme("mm4s"), do: {:always, true}
-  def determine_secure_from_scheme("mm4+s"), do: {:if_available, false}
-  def determine_secure_from_scheme(_other), do: {:never, false}
+  @spec parse_legacy(String.t, Keyword.t) :: Keyword.t
+  def parse_legacy(uri, config \\ []) do
+    uri =
+      uri
+      |> Elixir.URI.decode()
+      |> Elixir.URI.parse()
 
-  @spec update_mailer_config_from_uri(uri :: URI.t, config :: Keyword.t) :: Keyword.t
-  def update_mailer_config_from_uri(uri, config \\ []) do
-    {tls, ssl} = determine_secure_from_scheme(uri.scheme)
+    {tls, ssl} = case uri.scheme do
+      "smtps" -> {:always, true}
+      "smtp+s" -> {:if_available, false}
+      "mm4s" -> {:always, true}
+      "mm4+s" -> {:if_available, false}
+      _other -> {:never, false}
+    end
+
     options = [
       {:scheme, uri.scheme},
       {:relay, uri.host},
@@ -36,7 +47,7 @@ defmodule Mailmaid.SMTP.URI do
     end
 
     options = case user_credentials_from_uri(uri) do
-      {username, password} ->
+      {_, username, password} ->
         [
           {:username, username},
           {:password, password},
@@ -48,22 +59,56 @@ defmodule Mailmaid.SMTP.URI do
         [{:auth, :never} | options]
     end
 
-    options ++ config
+    Enum.into(config, options)
   end
 
-  def parse(uri, config \\ []) do
-    uri
-    |> Elixir.URI.decode()
-    |> Elixir.URI.parse()
-    |> update_mailer_config_from_uri(config)
-  end
-
-  def process_mailer_config(config) do
+  def process_legacy_mailer_config(config) do
     case config[:url] do
       nil -> config
       url ->
         config = Keyword.delete(config, :url)
-        parse(url, config)
+        parse_legacy(url, config)
     end
+  end
+
+  @spec parse_legacy(String.t, Keyword.t) :: map
+  def parse(uri, config \\ []) do
+    uri =
+      uri
+      |> Elixir.URI.decode()
+      |> Elixir.URI.parse()
+
+    options = %{
+      original_uri: uri,
+      transport: :mm4,
+      protocol: :tcp,
+      relay: uri.host,
+      port: uri.port,
+      upgrade_to_tls: :never,
+      use_auth: :never,
+      identity: nil,
+      username: nil,
+      password: nil,
+    }
+
+    options = case uri.scheme do
+      "mm4" -> %{options | transport: :mm4}
+      "mm4s" -> %{options | transport: :mm4, protocol: :ssl}
+      "mm4+s" -> %{options | transport: :mm4, upgrade_to_tls: :if_available}
+      "smtp" -> %{options | transport: :mm4}
+      "smtps" -> %{options | transport: :mm4, protocol: :ssl}
+      "smtp+s" -> %{options | transport: :mm4, upgrade_to_tls: :if_available}
+      "http" -> %{options | scheme: "http", transport: :http}
+      "https" -> %{options | scheme: "https", transport: :http}
+    end
+
+    options = case user_credentials_from_uri(uri) do
+      {identity, username, password} ->
+        %{options | use_auth: :always, identity: identity, username: username, password: password}
+
+      _ -> options
+    end
+
+    Enum.into(config, options)
   end
 end

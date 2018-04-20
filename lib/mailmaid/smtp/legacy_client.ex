@@ -14,7 +14,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
   end
 
   def process_options(options) do
-    options = Mailmaid.SMTP.URI.process_mailer_config(options)
+    options = Mailmaid.SMTP.URI.process_legacy_mailer_config(options)
     Keyword.merge(default_options(), options)
   end
 

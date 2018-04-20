@@ -99,25 +99,33 @@ defmodule Mailmaid.SMTP.Client.Commands do
 
   @spec ehlo(socket, String.t) :: command_response_t
   def ehlo(socket, domain) when is_binary(domain) do
+    Logger.debug ["< EHLO ", domain]
     cmd(socket, "EHLO", [domain])
     read_and_handle_common_reply(socket)
   end
 
   @spec helo(socket, String.t) :: command_response_t
   def helo(socket, domain) when is_binary(domain) do
+    Logger.debug ["< HELO ", domain]
     cmd(socket, "HELO", [domain])
     read_and_handle_common_reply(socket)
   end
 
   @spec auth(socket, String.t, String.t, String.t) :: command_response_t
 
+  def auth(socket, kind, username, password) when is_nil(username) or is_nil(password) do
+    {:error, socket, {:missing_auth_details, {kind, username, password}}}
+  end
+
   def auth(socket, "PLAIN", username, password) do
+    Logger.debug ["< AUTH PLAIN <redacted>"]
     auth_string64 = Base.encode64("\0#{username}\0#{password}")
     cmd(socket, "AUTH", ["PLAIN ", auth_string64])
     read_auth_reply(socket)
   end
 
   def auth(socket, "LOGIN", username, password) do
+    Logger.debug ["< AUTH LOGIN"]
     cmd(socket, "AUTH", ["LOGIN"])
     case read_possible_multiline_reply(socket) do
       {:ok, socket, ["334 " <> username_prompt | _rest] = messages} ->
@@ -154,6 +162,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
   end
 
   def auth(socket, "CRAM-MD5", username, password) do
+    Logger.debug ["< AUTH CRAM-MD5"]
     cmd(socket, "AUTH", ["CRAM-MD5"])
     case read_possible_multiline_reply(socket) do
       {:ok, socket, ["334" <> line | _rest]} ->
@@ -174,18 +183,23 @@ defmodule Mailmaid.SMTP.Client.Commands do
 
   @spec mail_from(socket, String.t) :: command_response_t
   def mail_from(socket, address) when is_binary(address) do
-    cmd(socket, "MAIL", ["FROM: ", wrap_address(address)])
+    from = wrap_address(address)
+    Logger.debug ["< MAIL FROM: ", from]
+    cmd(socket, "MAIL", ["FROM: ", from])
     read_and_handle_common_reply(socket)
   end
 
   @spec rcpt_to(socket, String.t) :: command_response_t
   def rcpt_to(socket, address) when is_binary(address) do
-    cmd(socket, "RCPT", ["TO: ", wrap_address(address)])
+    to = wrap_address(address)
+    Logger.debug ["< RCPT TO: ", to]
+    cmd(socket, "RCPT", ["TO: ", to])
     read_and_handle_common_reply(socket)
   end
 
   @spec data(socket, String.t) :: command_response_t
   def data(socket, body) when is_binary(body) do
+    Logger.debug ["< DATA"]
     cmd(socket, "DATA")
     case read_possible_multiline_reply(socket) do
       {:ok, socket, [<<"354", _line :: binary>> | _rest]} ->
@@ -200,6 +214,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
 
   @spec starttls(socket) :: command_response_t
   def starttls(socket) do
+    Logger.debug ["< STARTTLS"]
     cmd(socket, "STARTTLS")
     case read_possible_multiline_reply(socket) do
       {:ok, socket, [<<"220", _line :: binary>> | _rest]} ->
@@ -218,30 +233,35 @@ defmodule Mailmaid.SMTP.Client.Commands do
 
   @spec help(socket) :: command_response_t
   def help(socket) do
+    Logger.debug ["< HELP"]
     cmd(socket, "HELP")
     read_and_handle_common_reply(socket)
   end
 
   @spec noop(socket) :: command_response_t
   def noop(socket) do
+    Logger.debug ["< NOOP"]
     cmd(socket, "NOOP")
     read_and_handle_common_reply(socket)
   end
 
   @spec vrfy(socket, String.t) :: command_response_t
   def vrfy(socket, address) do
+    Logger.debug ["< VRFY"]
     cmd(socket, "VRFY", [address])
     read_and_handle_common_reply(socket)
   end
 
   @spec rset(socket) :: command_response_t
   def rset(socket) do
+    Logger.debug ["< RSET"]
     cmd(socket, "RSET")
     read_and_handle_common_reply(socket)
   end
 
   @spec quit(socket, non_neg_integer) :: command_response_t
   def quit(socket, timeout \\ 15000) do
+    Logger.debug ["< QUIT"]
     cmd(socket, "QUIT")
     case read_possible_multiline_reply(socket, timeout) do
       {_, socket, messages} when is_list(messages) ->

@@ -36,6 +36,9 @@ defmodule Mailmaid.SMTP.Client do
     hostname: String.t,
     # how many times should the client attempt to deliver the mail?
     retries: non_neg_integer,
+    # data = sends the DATA command
+    # noop = sends a NOOP command instead
+    action: :data | :noop,
   }
 
   # yeah... EHLO and HELO commands...
@@ -143,7 +146,10 @@ defmodule Mailmaid.SMTP.Client do
     {status, socket, msg} =
       with {:ok, socket, _} <- Commands.mail_from(socket, from),
            {:ok, socket, _} <- set_recipients(socket, to) do
-        Commands.data(socket, body)
+        case options.action do
+          :data -> Commands.data(socket, body)
+          :noop -> Commands.noop(socket)
+        end
       else
         {:error, _, _} = err -> err
       end
@@ -165,6 +171,7 @@ defmodule Mailmaid.SMTP.Client do
         # upgrade failures end up bricking the connection, so simply closing it is the best option
         Connection.close(socket)
         {:error, reason}
+      {:error, _} = err -> err
     end
   end
 
@@ -178,6 +185,8 @@ defmodule Mailmaid.SMTP.Client do
         Commands.quit(socket)
         {:ok, receipts}
       {:error, _, _} = err ->
+        try_smtp_sessions(rest, emails, options, [{distance, host, err} | errors])
+      {:error, _} = err ->
         try_smtp_sessions(rest, emails, options, [{distance, host, err} | errors])
     end
   end
@@ -196,15 +205,16 @@ defmodule Mailmaid.SMTP.Client do
       auth_preference: ["CRAM-MD5", "LOGIN", "PLAIN"],
       username: nil,
       password: nil,
-      hostname: :smtp_util.guess_FQDN(),
+      hostname: to_string(:smtp_util.guess_FQDN()),
       retries: 1,
+      action: :data,
     }
   end
 
   @doc """
   Sends a list of emails to a relay server
   """
-  @spec send_blocking(email_items, map) :: {:ok, receipt_items} | {:error, {:no_more_hosts, host_errors}}
+  @spec send_blocking(email_items, Keyword.t | map) :: {:ok, receipt_items} | {:error, {:no_more_hosts, host_errors}} | {:error, term}
   def send_blocking(emails, user_options) do
     options = Map.merge(default_options(), Enum.into(user_options, %{}))
     relay_domain = options[:relay]
@@ -220,12 +230,30 @@ defmodule Mailmaid.SMTP.Client do
         mx_records -> mx_records
       end
 
+    Logger.debug [
+      "send_blocking",
+      " relay=", inspect(relay_domain),
+      " hosts=", inspect(hosts),
+      " protocol=", inspect(options[:protocol]),
+      " port=", inspect(options[:port]),
+      " upgrade_to_tls=", inspect(options[:upgrade_to_tls]),
+      " use_auth=", inspect(options[:use_auth]),
+      " hostname=", inspect(options[:hostname]),
+    ]
     try_smtp_sessions(hosts, List.wrap(emails), options, [])
+  end
+
+  @spec send_blocking_noop(email_items, Keyword.t | map) :: term
+  def send_blocking_noop(emails, user_options) do
+    send_blocking(emails, Enum.into(user_options, %{}) |> Map.put(:action, :noop))
   end
 
   def process_options(options) do
     Logger.warn "process_options is deprecated, this function is kept for compatibility with the LegacyClient"
-    options = Mailmaid.SMTP.LegacyClient.process_options(options)
+    options =
+      options
+      |> Enum.into([])
+      |> Mailmaid.SMTP.LegacyClient.process_options()
     protocol = if options[:ssl] do :ssl else :tcp end
     options
     |> Keyword.drop([:auth, :tls, :ssl])

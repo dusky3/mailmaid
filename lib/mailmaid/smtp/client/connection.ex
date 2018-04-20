@@ -52,15 +52,16 @@ defmodule Mailmaid.SMTP.Client.Connection do
 
     case :socket.connect(protocol, hostname, port, socket_options, connect_timeout) do
       {:ok, socket} ->
-        #IO.inspect socket
-        #Logger.debug ["Connected successfully, waiting for banner protocol=", inspect(protocol)]
+        Logger.debug ["Connected successfully, waiting for banner protocol=", inspect(protocol)]
         case read_possible_multiline_reply(socket) do
           {:ok, socket, ["220" <> _banner | _rest] = messages} ->
+            Logger.debug ["Received banner messages=", inspect(messages)]
             {:ok, socket, {protocol, hostname, port}, messages}
           {:ok, socket, ["4" <> _other | _rest] = messages} -> {:error,
             {:temporary_failure, socket, messages}}
           {:ok, socket, messages} ->
             {:error, {:permanent_failure, socket, messages}}
+          {:error, _socket, reason} -> {:error, reason}
           {:error, _} = err -> err
         end
       {:error, reason} ->
