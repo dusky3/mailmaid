@@ -61,6 +61,7 @@ defmodule Mailmaid.SMTP.Client.Connection do
     Map.put(options, :connect_timeout, options[:connect_timeout] || 5000)
   end
 
+  @spec open(String.t, Keyword.t | map) :: {:ok, Commands.socket, map, list} | {:error, term}
   def open(hostname, options) do
     options = process_options(options)
     hostname = String.to_charlist(hostname)
@@ -71,8 +72,8 @@ defmodule Mailmaid.SMTP.Client.Connection do
           {:ok, socket, ["220" <> _banner | _rest] = messages} ->
             Logger.debug ["Received banner messages=", inspect(messages)]
             {:ok, socket, options, messages}
-          {:ok, socket, ["4" <> _other | _rest] = messages} -> {:error,
-            {:temporary_failure, socket, messages}}
+          {:ok, socket, ["4" <> _other | _rest] = messages} ->
+            {:error, {:temporary_failure, socket, messages}}
           {:ok, socket, messages} ->
             {:error, {:permanent_failure, socket, messages}}
           {:error, _socket, reason} -> {:error, reason}
@@ -83,6 +84,7 @@ defmodule Mailmaid.SMTP.Client.Connection do
     end
   end
 
+  @spec close(Commands.socket) :: :ok
   def close(socket) do
     :socket.close(socket)
     :ok
