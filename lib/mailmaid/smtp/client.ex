@@ -124,7 +124,7 @@ defmodule Mailmaid.SMTP.Client do
   defp set_recipients(socket, [recipient | rest]) do
     case Commands.rcpt_to(socket, recipient) do
       {:ok, socket, _} -> set_recipients(socket, rest)
-      {:error, socket, _} = err -> err
+      {:error, _socket, _reason} = err -> err
     end
   end
 
