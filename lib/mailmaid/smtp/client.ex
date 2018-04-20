@@ -64,13 +64,13 @@ defmodule Mailmaid.SMTP.Client do
           introduce_yourself(socket, options)
         {:error, _socket, {:upgrade_error, _}} = err -> err
         {:error, socket, _reason} = err ->
-          case options.use_auth do
+          case options.upgrade_to_tls do
             :always -> err
             :if_available -> {:ok, socket, extensions}
           end
       end
     else
-      case options.use_auth do
+      case options.upgrade_to_tls do
         :always -> {:error, socket, {:starttls_unavailable, []}}
         :if_available -> {:ok, socket, extensions}
       end
