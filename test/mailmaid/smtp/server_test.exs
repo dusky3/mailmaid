@@ -1,5 +1,5 @@
 defmodule Mailmaid.SMTP.ServerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   def launch_server(cb, options \\ []) do
     {:ok, _pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [

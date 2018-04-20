@@ -41,6 +41,7 @@ defmodule Mailmaid.SMTP.ClientTest do
   end
 
   describe "send_blocking" do
+    @tag protocol: :tcp
     test "will send an mms message over tcp", %{hostname: hostname, port: port} do
       email = {"john.doe@example.com", ["sally.sue@example.com", "sally.sue2@example.com"], "Hello, World"}
       assert {:ok, receipts} = Client.send_blocking(email,
