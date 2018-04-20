@@ -88,9 +88,7 @@ defmodule Mailmaid.SMTP.Client.ConnectionTest do
 
   describe "open tcp connection" do
     test "it will open a new smtp connection to server", %{hostname: hostname, port: port} do
-      assert {:ok, socket, {:tcp, hostname, ^port}, [banner]} = CC.open(hostname, port: port)
-
-      assert 'mailmaid.localhost' == hostname
+      assert {:ok, socket, %{protocol: :tcp, port: ^port}, [banner]} = CC.open(hostname, port: port)
       assert "220 mailmaid.localhost ESMTP Mailmaid.SMTP.ServerExample\r\n" == banner
       :ok = CC.close(socket)
     end
@@ -99,9 +97,7 @@ defmodule Mailmaid.SMTP.Client.ConnectionTest do
   describe "open ssl/tls connection" do
     @tag protocol: :ssl
     test "it will open a new smtp connection to server", %{hostname: hostname, port: port} do
-      assert {:ok, socket, {:ssl, hostname, ^port}, [banner]} = CC.open(hostname, port: port, protocol: :ssl)
-
-      assert 'mailmaid.localhost' == hostname
+      assert {:ok, socket, %{protocol: :ssl, port: ^port}, [banner]} = CC.open(hostname, port: port, protocol: :ssl)
       assert "220 mailmaid.localhost ESMTP Mailmaid.SMTP.ServerExample\r\n" == banner
       :ok = CC.close(socket)
     end
@@ -140,7 +136,7 @@ defmodule Mailmaid.SMTP.Client.CommandsTest do
   setup options do
     protocol = options[:protocol] || :tcp
     {:ok, %{hostname: hostname, port: port} = options} = Mailmaid.SMTP.ClientTest.setup_server(options)
-    {:ok, socket, {^protocol, _hostname, ^port}, [banner]} = CC.open(hostname, port: port, protocol: protocol)
+    {:ok, socket, %{protocol: ^protocol, port: ^port}, [banner]} = CC.open(hostname, port: port, protocol: protocol)
     on_exit(fn ->
       :ok = CC.close(socket)
       :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)

@@ -157,7 +157,7 @@ defmodule Mailmaid.SMTP.Client do
   end
 
   defp try_smtp_session(host, emails, options) do
-    with {:ok, socket, _conn_info, _messages} <- Connection.open(host, options),
+    with {:ok, socket, options, _messages} <- Connection.open(host, options),
          {:ok, socket, extensions} <- introduce_yourself(socket, options),
          {:ok, socket, extensions} <- try_starttls(socket, extensions, options),
          {:ok, socket, _messages} <- try_auth(socket, extensions, options) do

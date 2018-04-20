@@ -3,10 +3,8 @@ require Logger
 defmodule Mailmaid.SMTP.Client.Connection do
   import Mailmaid.SMTP.Client.Commands, only: [read_possible_multiline_reply: 1]
 
-  def open(hostname, options) do
+  defp process_options(options) do
     options = Enum.into(options, %{})
-    hostname = String.to_charlist(hostname)
-
     additional_socket_options = cond do
       Map.has_key?(options, :sockopts) ->
         Logger.warn "sockopts is deprecated, use socket_options instead"
@@ -23,10 +21,19 @@ defmodule Mailmaid.SMTP.Client.Connection do
       | additional_socket_options
     ]
 
+    options = Map.put(options, :socket_options, socket_options)
+
     protocol = cond do
       Map.has_key?(options, :protocol) ->
-        #Logger.debug ["explicit protocol given ", inspect(options[:protocol])]
-        options[:protocol]
+        Logger.debug ["explicit protocol given ", inspect(options[:protocol])]
+        case options[:protocol] do
+          p when p in [:ssl, :tcp] -> p
+          p when p in ["ssl", "tcp"] ->
+            Logger.warn "use atoms for protocols, not strings"
+            String.to_existing_atom(p)
+          _ ->
+            raise ""
+        end
 
       Map.has_key?(options, :ssl) ->
         Logger.warn "ssl option is deprecated, use `protocol: :ssl` instead"
@@ -39,6 +46,8 @@ defmodule Mailmaid.SMTP.Client.Connection do
       true -> :tcp
     end
 
+    options = Map.put(options, :protocol, protocol)
+
     port = case options[:port] do
       nil ->
         case protocol do
@@ -47,16 +56,21 @@ defmodule Mailmaid.SMTP.Client.Connection do
         end
       p when is_integer(p) -> p
     end
+    options = Map.put(options, :port, port)
 
-    connect_timeout = options[:connect_timeout] || 5000
+    Map.put(options, :connect_timeout, options[:connect_timeout] || 5000)
+  end
 
-    case :socket.connect(protocol, hostname, port, socket_options, connect_timeout) do
+  def open(hostname, options) do
+    options = process_options(options)
+    hostname = String.to_charlist(hostname)
+    case :socket.connect(options.protocol, hostname, options.port, options.socket_options, options.connect_timeout) do
       {:ok, socket} ->
-        Logger.debug ["Connected successfully, waiting for banner protocol=", inspect(protocol)]
+        Logger.debug ["Connected successfully, waiting for banner protocol=", inspect(options.protocol)]
         case read_possible_multiline_reply(socket) do
           {:ok, socket, ["220" <> _banner | _rest] = messages} ->
             Logger.debug ["Received banner messages=", inspect(messages)]
-            {:ok, socket, {protocol, hostname, port}, messages}
+            {:ok, socket, options, messages}
           {:ok, socket, ["4" <> _other | _rest] = messages} -> {:error,
             {:temporary_failure, socket, messages}}
           {:ok, socket, messages} ->
