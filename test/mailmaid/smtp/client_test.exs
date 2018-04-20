@@ -76,12 +76,12 @@ defmodule Mailmaid.SMTP.ClientTest do
     end
   end
 
-  describe "process_options/1" do
+  describe "process_legacy_options/1" do
     test "will handle url" do
       config = %{
         url: "mm4s://user:pass@example.com:2556"
       }
-      res = Mailmaid.SMTP.Client.process_options(config)
+      res = Mailmaid.SMTP.Client.process_legacy_options(config)
       new_config = Enum.into(res, %{})
 
       assert %{
@@ -92,13 +92,35 @@ defmodule Mailmaid.SMTP.ClientTest do
         port: 2556,
         scheme: "mm4s",
         relay: "example.com",
-        upgrade_to_tls: :always,
+        upgrade_to_tls: :never,
         use_auth: :always,
         procotol: :ssl,
         transport: :mm4,
       } == new_config
 
-      assert res == Mailmaid.SMTP.Client.process_options(config)
+      assert res == Mailmaid.SMTP.Client.process_legacy_options(config)
+    end
+  end
+
+  describe "process_options" do
+    test "will handle a url" do
+      config = %{
+        url: "mm4s://user:pass@example.com:2556"
+      }
+      res = Mailmaid.SMTP.Client.process_options(config)
+
+      assert %{
+        original_uri: "mm4s://user:pass@example.com:2556",
+        transport: :mm4,
+        relay: "example.com",
+        port: 2556,
+        protocol: :ssl,
+        upgrade_to_tls: :never,
+        use_auth: :always,
+        identity: nil,
+        username: "user",
+        password: "pass",
+      } == res
     end
   end
 end

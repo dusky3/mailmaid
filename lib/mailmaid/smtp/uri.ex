@@ -26,9 +26,9 @@ defmodule Mailmaid.SMTP.URI do
       |> Elixir.URI.parse()
 
     {tls, ssl} = case uri.scheme do
-      "smtps" -> {:always, true}
+      "smtps" -> {:never, true}
       "smtp+s" -> {:if_available, false}
-      "mm4s" -> {:always, true}
+      "mm4s" -> {:never, true}
       "mm4+s" -> {:if_available, false}
       _other -> {:never, false}
     end
@@ -71,7 +71,7 @@ defmodule Mailmaid.SMTP.URI do
     end
   end
 
-  @spec parse_legacy(String.t, Keyword.t) :: map
+  @spec parse(String.t, Keyword.t) :: map
   def parse(uri_s, config \\ []) do
     uri =
       uri_s

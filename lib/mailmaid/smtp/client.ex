@@ -248,8 +248,8 @@ defmodule Mailmaid.SMTP.Client do
     send_blocking(emails, Enum.into(user_options, %{}) |> Map.put(:action, :noop))
   end
 
-  def process_options(options) do
-    Logger.warn "process_options is deprecated, this function is kept for compatibility with the LegacyClient"
+  def process_legacy_options(options) do
+    Logger.warn "process_legacy_options is deprecated, this function is kept for compatibility with the LegacyClient"
     options =
       options
       |> Enum.into([])
@@ -263,5 +263,18 @@ defmodule Mailmaid.SMTP.Client do
       use_auth: options[:use_auth] || options[:auth],
       procotol: options[:procotol] || protocol
     )
+  end
+
+  @spec process_options(Keyword.t | map) :: map
+  def process_options(options) do
+    case options[:url] do
+      nil ->
+        options
+      url ->
+        url_options = Mailmaid.SMTP.URI.parse(url)
+        Enum.into(options, url_options)
+    end
+    |> Enum.into(%{})
+    |> Map.drop([:url])
   end
 end

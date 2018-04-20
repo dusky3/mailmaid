@@ -21,7 +21,7 @@ defmodule Mailmaid.SMTP.URITest do
 
     test "parses a smtp client/server uri with mandatory tls" do
       config = SMTP.URI.parse_legacy("smtps://user:pass@domain.localhost:2525") |> Enum.into(%{})
-      assert %{port: 2525, relay: "domain.localhost", username: "user", password: "pass", auth: :always, ssl: true, tls: :always, scheme: "smtps"} == config
+      assert %{port: 2525, relay: "domain.localhost", username: "user", password: "pass", auth: :always, ssl: true, tls: :never, scheme: "smtps"} == config
     end
 
     test "parses a mm4 client/server uri without auth" do
@@ -41,7 +41,7 @@ defmodule Mailmaid.SMTP.URITest do
 
     test "parses a mm4 client/server uri with mandatory tls" do
       config = SMTP.URI.parse_legacy("mm4s://user:pass@domain.localhost:2525") |> Enum.into(%{})
-      assert %{port: 2525, relay: "domain.localhost", username: "user", password: "pass", auth: :always, ssl: true, tls: :always, scheme: "mm4s"} == config
+      assert %{port: 2525, relay: "domain.localhost", username: "user", password: "pass", auth: :always, ssl: true, tls: :never, scheme: "mm4s"} == config
     end
   end
 
