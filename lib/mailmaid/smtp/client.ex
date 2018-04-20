@@ -8,6 +8,8 @@ defmodule Mailmaid.SMTP.Client do
   @type email_items :: [email_item]
   @type receipt_item :: {:ok | :error, id :: term, term}
   @type receipt_items :: [receipt_item]
+  @type host_error :: {distance :: non_neg_integer, host :: String.t, error :: term}
+  @type host_errors :: [host_error]
 
   @type client_options :: %{
     # Relay configuration
@@ -45,8 +47,8 @@ defmodule Mailmaid.SMTP.Client do
     end
   end
 
-  defp try_starttls(socket, _extensions, %{use_auth: :never}) do
-    {:ok, socket, []}
+  defp try_starttls(socket, extensions, %{upgrade_to_tls: :never}) do
+    {:ok, socket, extensions}
   end
 
   defp try_starttls(socket, extensions, %{procotol: :tcp} = options) do
@@ -58,19 +60,19 @@ defmodule Mailmaid.SMTP.Client do
         {:error, socket, _reason} = err ->
           case options.use_auth do
             :always -> err
-            :if_available -> {:ok, socket, []}
+            :if_available -> {:ok, socket, extensions}
           end
       end
     else
       case options.use_auth do
         :always -> {:error, socket, {:starttls_unavailable, []}}
-        :if_available -> {:ok, socket, []}
+        :if_available -> {:ok, socket, extensions}
       end
     end
   end
 
-  defp try_starttls(socket, _extensions, %{procotol: :ssl}) do
-    {:ok, socket, []}
+  defp try_starttls(socket, extensions, %{procotol: :ssl}) do
+    {:ok, socket, extensions}
   end
 
   defp try_auth(socket, _extensions, %{use_auth: :never}) do
@@ -81,7 +83,7 @@ defmodule Mailmaid.SMTP.Client do
     case extensions["AUTH"] do
       # the server supports no form of AUTH
       nil ->
-        {:error, socket, {:auth_unavailable, []}}
+        {:error, socket, {:auth_disabled, []}}
       auth_types_str ->
         auth_types =
           auth_types_str
@@ -185,12 +187,16 @@ defmodule Mailmaid.SMTP.Client do
     }
   end
 
-  def send_blocking(emails, options) do
-    new_options = Map.merge(default_options(), Enum.into(options, %{}))
-    relay_domain = new_options[:relay]
+  @doc """
+  Sends a list of emails to a relay server
+  """
+  @spec send_blocking(email_items, map) :: {:ok, receipt_items} | {:error, {:no_more_hosts, host_errors}}
+  def send_blocking(emails, user_options) do
+    options = Map.merge(default_options(), Enum.into(user_options, %{}))
+    relay_domain = options[:relay]
 
     hosts =
-      if Keyword.get(new_options, :use_mx_lookups) do
+      if options.use_mx_lookups do
         :smtp_util.mxlookup(relay_domain)
       else
         []

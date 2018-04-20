@@ -135,7 +135,7 @@ defmodule Mailmaid.SMTP.ServerExample do
   end
 
   def handle_STARTTLS(state) do
-    :io.format("TLS Started~n")
+    Logger.info("TLS Started")
     state
   end
 

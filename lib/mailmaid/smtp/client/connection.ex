@@ -4,13 +4,14 @@ defmodule Mailmaid.SMTP.Client.Connection do
   import Mailmaid.SMTP.Client.Commands, only: [read_possible_multiline_reply: 1]
 
   def open(hostname, options) do
+    options = Enum.into(options, %{})
     hostname = String.to_charlist(hostname)
 
     additional_socket_options = cond do
-      Keyword.has_key?(options, :sockopts) ->
+      Map.has_key?(options, :sockopts) ->
         Logger.warn "sockopts is deprecated, use socket_options instead"
         options[:sockopts]
-      Keyword.has_key?(options, :socket_options) -> options[:socket_options]
+      Map.has_key?(options, :socket_options) -> options[:socket_options]
       true -> []
     end
 
@@ -23,11 +24,11 @@ defmodule Mailmaid.SMTP.Client.Connection do
     ]
 
     protocol = cond do
-      Keyword.has_key?(options, :protocol) ->
+      Map.has_key?(options, :protocol) ->
         #Logger.debug ["explicit protocol given ", inspect(options[:protocol])]
         options[:protocol]
 
-      Keyword.has_key?(options, :ssl) ->
+      Map.has_key?(options, :ssl) ->
         Logger.warn "ssl option is deprecated, use `protocol: :ssl` instead"
         if options[:ssl] do
           :ssl
