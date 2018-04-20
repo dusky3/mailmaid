@@ -3,7 +3,7 @@ defmodule Mailmaid.Mixfile do
 
   def project do
     [app: :mailmaid,
-     version: "0.2.0",
+     version: "1.0.0",
      build_path: "_build",
      config_path: "config/config.exs",
      deps_path: "deps",
@@ -45,7 +45,7 @@ defmodule Mailmaid.Mixfile do
   defp deps do
     [
       {:gen_smtp, "~> 0.11"},
-      {:ranch, "~> 1.3"},
+      {:ranch, "~> 1.5"},
     ]
   end
 end

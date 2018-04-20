@@ -33,7 +33,7 @@ defmodule Mailmaid.SMTP.Client.Auth do
         :socket.send(socket, [string, "\r\n"])
 
         case read_possible_multiline_reply(socket) do
-          {:ok, <<"245", _rest :: binary>>} ->
+          {:ok, <<"235", _rest :: binary>>} ->
             true
 
           {:ok, _msg} ->

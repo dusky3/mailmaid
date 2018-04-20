@@ -720,11 +720,29 @@ defmodule Mailmaid.SMTP.Protocol do
   def callback_mode, do: [:handle_event_function, :state_enter]
 
   def handle_event(:enter, _event, :wait_for_ack, state) do
+    Logger.debug [
+      "waiting for acknowledgement",
+      " ref=", inspect(state.ref),
+      " socket=", inspect(state.socket),
+      " transport=", inspect(state.transport),
+    ]
     {:keep_state, state}
   end
 
   def handle_event(:info, {:shoot, _module, transport, _port, timeout}, :wait_for_ack, state) do
+    Logger.debug [
+      "received shoot",
+      " ref=", inspect(state.ref),
+      " socket=", inspect(state.socket),
+      " transport=", inspect(state.transport),
+    ]
     :ok = transport.accept_ack(state.socket, timeout)
+    Logger.debug [
+      "accepted acknowledgement",
+      " ref=", inspect(state.ref),
+      " socket=", inspect(state.socket),
+      " transport=", inspect(state.transport),
+    ]
     {:next_state, :protocol_loop, state}
   end
 
@@ -767,6 +785,13 @@ defmodule Mailmaid.SMTP.Protocol do
   def init([ref, socket, transport, opts]) do
     state = struct(State, Enum.into(opts, %{}))
     state = %{state | ref: ref, socket: socket, transport: transport}
+    Logger.debug [
+      "initialized protocol",
+      " pid=", inspect(self()),
+      " ref=", inspect(ref),
+      " socket=", inspect(socket),
+      " transport=", inspect(transport),
+    ]
     {:ok, :wait_for_ack, state}
   end
 
