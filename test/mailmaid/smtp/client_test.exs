@@ -103,6 +103,23 @@ defmodule Mailmaid.SMTP.ClientTest do
   end
 
   describe "process_options" do
+    test "will cast fields" do
+      config = %{
+        use_auth: "never",
+        upgrade_to_tls: "always",
+        protocol: "ssl",
+        action: "noop"
+      }
+      res = Mailmaid.SMTP.Client.process_options(config)
+
+      assert %{
+        use_auth: :never,
+        upgrade_to_tls: :always,
+        protocol: :ssl,
+        action: :noop,
+      } == res
+    end
+
     test "will handle a url" do
       config = %{
         url: "mm4s://user:pass@example.com:2556"

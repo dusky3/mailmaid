@@ -265,6 +265,33 @@ defmodule Mailmaid.SMTP.Client do
     )
   end
 
+  defp cast_protocol(nil), do: nil
+  defp cast_protocol(value) when value in [:tcp, :ssl], do: value
+  defp cast_protocol("tcp"), do: :tcp
+  defp cast_protocol("ssl"), do: :ssl
+
+  defp cast_3state(nil), do: nil
+  defp cast_3state(value) when value in [:always, :never, :if_available], do: value
+  defp cast_3state("always"), do: :always
+  defp cast_3state("never"), do: :never
+  defp cast_3state("if_available"), do: :if_available
+
+  defp cast_action(nil), do: nil
+  defp cast_action(value) when value in [:noop, :data], do: value
+  defp cast_action("noop"), do: :noop
+  defp cast_action("data"), do: :data
+
+  defp maybe_put(map, key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp cast_fields(map) do
+    map
+    |> maybe_put(:upgrade_to_tls, cast_3state(Map.get(map, :upgrade_to_tls)))
+    |> maybe_put(:use_auth, cast_3state(Map.get(map, :use_auth)))
+    |> maybe_put(:action, cast_action(Map.get(map, :action)))
+    |> maybe_put(:protocol, cast_protocol(Map.get(map, :protocol)))
+  end
+
   @spec process_options(Keyword.t | map) :: map
   def process_options(options) do
     case options[:url] do
@@ -276,5 +303,6 @@ defmodule Mailmaid.SMTP.Client do
     end
     |> Enum.into(%{})
     |> Map.drop([:url])
+    |> cast_fields()
   end
 end
