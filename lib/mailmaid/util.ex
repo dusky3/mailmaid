@@ -12,6 +12,15 @@ defmodule Mailmaid.Util do
     addr
   end
 
+  @spec encode_address(String.t | tuple) :: String.t
+  def encode_address(tup) when is_tuple(tup) do
+    tup
+    |> :inet.ntoa()
+    |> to_string()
+  end
+
+  def encode_address(bin) when is_binary(bin), do: bin
+
   def is_ipv6_address?({_a, _b, _c, _d, _e, _f, _g, _h}), do: true
   def is_ipv6_address?(_), do: false
 end
