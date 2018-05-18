@@ -786,7 +786,8 @@ defmodule Mailmaid.SMTP.Protocol do
     state = struct(State, Enum.into(opts, %{}))
     state = %{state | ref: ref, socket: socket, transport: transport}
     Logger.debug [
-      "initialized protocol",
+      "#{__MODULE__}:",
+      " initialized protocol",
       " pid=", inspect(self()),
       " ref=", inspect(ref),
       " socket=", inspect(socket),

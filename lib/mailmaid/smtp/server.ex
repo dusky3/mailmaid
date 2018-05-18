@@ -20,6 +20,7 @@ defmodule Mailmaid.SMTP.Server do
     {:address, ipv4_t | ipv6_t},
     {:family, :inet | :inet6},
     {:hostname, String.t},
+    {:num_acceptors, non_neg_integer},
     {:port, non_neg_integer},
     {:sessionoptions, Keyword.t},
     {:protocol, :tcp},
@@ -41,7 +42,7 @@ defmodule Mailmaid.SMTP.Server do
   """
   @spec start_link(session_module :: atom, listeners :: [listener_config], process_options) :: {:ok, pid} | {:error, term}
   def start_link(session_module, [listener_options], process_options \\ []) do
-    num_acceptors = 256
+    num_acceptors = Keyword.get(listener_options, :num_acceptors, 256)
     transport_opts = [
       {:port, Keyword.get(listener_options, :port, 2525)},
       Keyword.get(listener_options, :family, :inet)
@@ -62,7 +63,8 @@ defmodule Mailmaid.SMTP.Server do
     end
     ref = process_options[:name] || session_module
     Logger.debug [
-      "starting listener",
+      "#{__MODULE__}:",
+      " starting listener",
       " transport=", inspect(transport),
       " port=", inspect(transport_opts[:port]),
       " hostname=", inspect(opts[:hostname]),
