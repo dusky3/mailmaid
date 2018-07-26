@@ -9,8 +9,6 @@ defmodule Mailmaid.SMTP.ServerExample do
     }
   end
 
-  @relay true
-
   use Mailmaid.SMTP.Server
 
   def init(hostname, session_count, address, options) do
@@ -95,11 +93,11 @@ defmodule Mailmaid.SMTP.ServerExample do
     :error
   end
 
-  def handle_DATA(from, to, <<>>, state) do
+  def handle_DATA(_from, _to, <<>>, state) do
     {:error, "552 Message too small", state}
   end
 
-  def handle_DATA(from, to, data, state) do
+  def handle_DATA(_from, _to, _data, state) do
     #IO.inspect {:handle_DATA, from, to, data}
     #reference = :lists.flatten([:io_lib.format("~2.16.0b", [x])])
     {:ok, "Accepted", state}

@@ -499,7 +499,7 @@ defmodule Mailmaid.SMTP.Protocol do
 
       {_, true} ->
         transport.send(socket, "220 OK\r\n")
-        case :ssl.ssl_accept(socket, state.ssl_options, 15_000) do
+        case :ssl.handshake(socket, state.ssl_options, 15_000) do
           {:ok, socket} ->
             state = %{state |
               tls: true,

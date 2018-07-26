@@ -281,7 +281,7 @@ defmodule Mailmaid.SMTP.Client do
   defp cast_action("noop"), do: :noop
   defp cast_action("data"), do: :data
 
-  defp maybe_put(map, key, nil), do: map
+  defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp cast_fields(map) do

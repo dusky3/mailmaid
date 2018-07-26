@@ -32,10 +32,10 @@ defmodule Mailmaid.SMTP.ServerTest do
 
   def receive_auth_lines(socket, transport, acc \\ false) do
     case transport.recv(socket, 0, 1000) do
-      {:ok, "250-AUTH" <> _rest = line} ->
+      {:ok, "250-AUTH" <> _rest} ->
         receive_auth_lines(socket, transport, true)
 
-      {:ok, "250-" <> _rest = line} ->
+      {:ok, "250-" <> _rest} ->
         receive_auth_lines(socket, transport, acc)
 
       {:ok, "250 AUTH" <> _rest} ->
@@ -382,10 +382,10 @@ defmodule Mailmaid.SMTP.ServerTest do
 
   def receive_starttls_lines(socket, transport, acc \\ false) do
     case transport.recv(socket, 0, 1000) do
-      {:ok, "250-STARTTLS" <> _rest = line} ->
+      {:ok, "250-STARTTLS" <> _rest} ->
         receive_starttls_lines(socket, transport, true)
 
-      {:ok, "250-" <> _rest = line} ->
+      {:ok, "250-" <> _rest} ->
         receive_starttls_lines(socket, transport, acc)
 
       {:ok, "250 STARTTLS" <> _rest} ->
@@ -418,7 +418,7 @@ defmodule Mailmaid.SMTP.ServerTest do
         assert {:ok, "250-mailmaid.localhost\r\n"} = send_and_wait(socket, transport, "EHLO somehost.com\r\n")
         assert true == receive_starttls_lines(socket, transport)
         assert {:ok, "220 " <> _} = send_and_wait(socket, transport, "STARTTLS\r\n")
-        transport = :ranch_ssl
+        #transport = :ranch_ssl
         assert {:ok, _socket} = :ssl.connect(socket, [])
       end, @tls_server_options)
     end
