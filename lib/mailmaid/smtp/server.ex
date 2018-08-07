@@ -8,7 +8,7 @@ defmodule Mailmaid.SMTP.Server do
   end
 
   @moduledoc """
-  Options
+  Wrapper around Ranch to make it friendly with
   """
   alias :ranch, as: Ranch
 
@@ -35,7 +35,7 @@ defmodule Mailmaid.SMTP.Server do
 
   def child_spec(options) do
     %{
-      id: options[:id],
+      id: options[:id] || options[:session_module],
       start: {
         __MODULE__,
         :start_link,
@@ -47,6 +47,7 @@ defmodule Mailmaid.SMTP.Server do
       },
       restart: :permanent,
       type: :supervisor,
+      shutdown: 10_000
     }
   end
 
@@ -59,6 +60,10 @@ defmodule Mailmaid.SMTP.Server do
   """
   @spec start_link(session_module :: atom, listeners :: [listener_config], process_options) :: {:ok, pid} | {:error, term}
   def start_link(session_module, [listener_options], process_options \\ []) do
+    GenServer.start_link(__MODULE__, {session_module, listener_options, process_options}, process_options)
+  end
+
+  def init({session_module, listener_options, process_options}) do
     num_acceptors = Keyword.get(listener_options, :num_acceptors, 256)
     transport_opts = [
       {:port, Keyword.get(listener_options, :port, 2525)},
@@ -78,15 +83,35 @@ defmodule Mailmaid.SMTP.Server do
         more_options = Keyword.get(listener_options, :ssl_options)
         {:ranch_ssl, transport_opts ++ more_options, Keyword.put(opts, :tls, true)}
     end
-    ref = process_options[:name] || session_module
-    Logger.debug [
-      "#{__MODULE__}:",
-      " starting listener",
-      " transport=", inspect(transport),
-      " port=", inspect(transport_opts[:port]),
-      " hostname=", inspect(opts[:hostname]),
-      " address=", inspect(opts[:address]),
-    ]
-    Ranch.start_listener(ref, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts)
+    ref = process_options[:ref] || session_module
+    case Ranch.start_listener(ref, num_acceptors, transport, transport_opts, Mailmaid.SMTP.Protocol, opts) do
+      {:ok, pid} ->
+        mon_ref = Process.monitor(pid)
+        Logger.debug [
+          "#{__MODULE__}:",
+          " started listener",
+          " pid=", inspect(pid),
+          " ref=", inspect(ref),
+          " transport=", inspect(transport),
+          " port=", inspect(transport_opts[:port]),
+          " hostname=", inspect(opts[:hostname]),
+          " address=", inspect(opts[:address]),
+        ]
+        {:ok, {mon_ref, ref, pid}}
+      {:error, _} = err -> err
+    end
+  end
+
+  def terminate(_reason, {_mon_ref, ref, _pid}) do
+    Ranch.stop_listener(ref)
+    :ok
+  end
+
+  def handle_info({:DOWN, _mon_ref, :process, _object, reason}, state) do
+    {:stop, reason}
+  end
+
+  def stop(pid) do
+    GenServer.stop(pid)
   end
 end
