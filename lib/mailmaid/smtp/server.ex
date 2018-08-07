@@ -33,6 +33,23 @@ defmodule Mailmaid.SMTP.Server do
     {:name, atom},
   ]
 
+  def child_spec(options) do
+    %{
+      id: options[:id],
+      start: {
+        __MODULE__,
+        :start_link,
+        [
+          options[:session_module],
+          options[:listeners],
+          Keyword.get(options, :process_options, []),
+        ]
+      },
+      restart: :permanent,
+      type: :supervisor,
+    }
+  end
+
   @doc """
   Starts a new SMTP server listener
 
