@@ -136,13 +136,9 @@ defmodule Mailmaid.SMTP.Client do
     {:ok, socket, Enum.reverse(receipts)}
   end
 
-  defp try_smtp_session_sending([item | rest], socket, extensions, options, receipts) do
+  defp try_smtp_session_sending([{id, from, to, body} | rest], socket, extensions, options, receipts) do
     # TODO: maybe reset before or after each message
     #{_, socket, _} = Commands.rset(socket)
-    {id, from, to, body} = case item do
-      {_id, _from, _to, _body} = res -> res
-      {from, to, body} -> {nil, from, to, body}
-    end
     {status, socket, msg} =
       with {:ok, socket, _} <- Commands.mail_from(socket, from),
            {:ok, socket, _} <- set_recipients(socket, to) do
@@ -211,6 +207,15 @@ defmodule Mailmaid.SMTP.Client do
     }
   end
 
+  defp normalize_emails(emails) do
+    emails
+    |> List.wrap()
+    |> Enum.map(fn
+      {_id, _from, _to, _body} = res -> res
+      {from, to, body} -> {nil, from, to, body}
+    end)
+  end
+
   @doc """
   Sends a list of emails to a relay server
   """
@@ -240,7 +245,9 @@ defmodule Mailmaid.SMTP.Client do
       " use_auth=", inspect(options[:use_auth]),
       " hostname=", inspect(options[:hostname]),
     ]
-    try_smtp_sessions(hosts, List.wrap(emails), options, [])
+
+    emails = normalize_emails(emails)
+    try_smtp_sessions(hosts, emails, options, [])
   end
 
   @spec send_blocking_noop(email_items, Keyword.t | map) :: term

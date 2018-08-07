@@ -24,6 +24,14 @@ defmodule Mailmaid.SMTP.ServerExample do
     end
   end
 
+  def code_change(_old_vsn, state, _extra) do
+    {:ok, state}
+  end
+
+  def terminate(_reason, _state) do
+    :ok
+  end
+
   def handle_HELO(<<"invalid">>, state) do
     {:error, "554 invalid hostname", state}
   end
@@ -135,14 +143,6 @@ defmodule Mailmaid.SMTP.ServerExample do
   def handle_STARTTLS(state) do
     Logger.info("TLS Started")
     state
-  end
-
-  def code_change(_old_vsn, state, _extra) do
-    {:ok, state}
-  end
-
-  def terminate(reason, state) do
-    {:ok, reason, state}
   end
 
   #def relay(_, [], _), do: :ok

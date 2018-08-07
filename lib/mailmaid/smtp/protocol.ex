@@ -70,6 +70,29 @@ defmodule Mailmaid.SMTP.Protocol do
   @callback handle_STARTTLS(callback_state_t) :: callback_state_t
   @callback handle_other(verb :: String.t, args :: String.t, callback_state_t) :: {message :: reason_t, callback_state_t}
 
+  def start_link(ref, socket, transport, opts) do
+    :gen_statem.start_link(__MODULE__, [ref, socket, transport, opts], [])
+  end
+
+  def init([ref, socket, transport, opts]) do
+    state = struct(State, Enum.into(opts, %{}))
+    state = %{state | ref: ref, socket: socket, transport: transport}
+    Logger.debug [
+      "#{__MODULE__}:",
+      " initialized protocol",
+      " pid=", inspect(self()),
+      " ref=", inspect(ref),
+      " socket=", inspect(socket),
+      " transport=", inspect(transport),
+    ]
+    {:ok, :wait_for_ack, state}
+  end
+
+  def terminate(reason, _action, state) do
+    state.session_module.terminate(reason, state.callback_state)
+    :normal
+  end
+
   def get_extension(extensions, key) do
     Enum.find(extensions, fn
       {^key, _} -> true
@@ -780,28 +803,5 @@ defmodule Mailmaid.SMTP.Protocol do
   def handle_event(type, content, action, state) do
     IO.inspect "Unhandled Event: type=#{type} content=#{inspect content} action=#{action}"
     {:keep_state, state}
-  end
-
-  def terminate(reason, _action, state) do
-    state.session_module.terminate(reason, state.callback_state)
-    :normal
-  end
-
-  def init([ref, socket, transport, opts]) do
-    state = struct(State, Enum.into(opts, %{}))
-    state = %{state | ref: ref, socket: socket, transport: transport}
-    Logger.debug [
-      "#{__MODULE__}:",
-      " initialized protocol",
-      " pid=", inspect(self()),
-      " ref=", inspect(ref),
-      " socket=", inspect(socket),
-      " transport=", inspect(transport),
-    ]
-    {:ok, :wait_for_ack, state}
-  end
-
-  def start_link(ref, socket, transport, opts) do
-    :gen_statem.start_link(__MODULE__, [ref, socket, transport, opts], [])
   end
 end

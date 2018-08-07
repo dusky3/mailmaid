@@ -2,7 +2,7 @@ defmodule Mailmaid.SMTP.Server.IntegrationTest do
   use ExUnit.Case, async: false
 
   def launch_server(cb, options \\ []) do
-    {:ok, _pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [
+    {:ok, pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [
       [
         {:hostname, "mailmaid.localhost"},
         {:port, 9876},
@@ -17,7 +17,7 @@ defmodule Mailmaid.SMTP.Server.IntegrationTest do
       :ranch_tcp.setopts(socket, [packet: :line])
       cb.(socket, :ranch_tcp)
     after
-      :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
+      :ok = Mailmaid.SMTP.Server.stop(pid)
     end
   end
 

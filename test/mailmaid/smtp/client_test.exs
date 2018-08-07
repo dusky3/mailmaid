@@ -14,7 +14,7 @@ defmodule Mailmaid.SMTP.ClientTest do
       |> Map.take([:protocol, :ssl_options])
       |> Enum.into([])
 
-    server_options = [
+    listener_options = [
       {:hostname, hostname},
       {:port, port},
       {:sessionoptions, [
@@ -28,19 +28,30 @@ defmodule Mailmaid.SMTP.ClientTest do
       }
       | additional_options
     ]
-    Logger.debug ["Staring Server ", "hostname=", server_options[:hostname], " port=", inspect(server_options[:port]), " protocol=", inspect(server_options[:protocol])]
-    {:ok, pid} = Mailmaid.SMTP.Server.start_link(Mailmaid.SMTP.ServerExample, [server_options])
-    {:ok, Map.merge(options, %{server_pid: pid, hostname: hostname, port: server_options[:port]})}
-  end
+    Logger.debug ["Staring Server ", "hostname=", listener_options[:hostname], " port=", inspect(listener_options[:port]), " protocol=", inspect(listener_options[:protocol])]
+    server_id = :client_smtp_server_example
 
-  setup options do
-    on_exit(fn ->
-      :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
-    end)
-    Mailmaid.SMTP.ClientTest.setup_server(options)
+    {:ok, pid} = start_supervised({
+      Mailmaid.SMTP.Server,
+      session_module: Mailmaid.SMTP.ServerExample,
+      listeners: [listener_options],
+      process_options: [
+        name: Mailmaid.SMTP.ServerExample
+      ]
+    }, id: server_id)
+    {:ok, Map.merge(options, %{
+      server_id: server_id,
+      server_pid: pid,
+      hostname: hostname,
+      port: listener_options[:port]
+    })}
   end
 
   describe "send_blocking" do
+    setup options do
+      Mailmaid.SMTP.ClientTest.setup_server(options)
+    end
+
     @tag protocol: :tcp
     test "will send an mms message over tcp", %{hostname: hostname, port: port} do
       email = {"john.doe@example.com", ["sally.sue@example.com", "sally.sue2@example.com"], "Hello, World"}
@@ -75,6 +86,10 @@ defmodule Mailmaid.SMTP.ClientTest do
       assert [{:ok, nil, ["250 queued as Accepted\r\n"]}] == receipts
     end
   end
+end
+
+defmodule Mailmaid.SMTP.Client.OptionProcessingTest do
+  use ExUnit.Case, async: true
 
   describe "process_legacy_options/1" do
     test "will handle url" do
@@ -142,13 +157,32 @@ defmodule Mailmaid.SMTP.ClientTest do
   end
 end
 
+defmodule Mailmaid.SMTP.Client.ServerTest do
+  use ExUnit.Case, async: false
+
+  describe "start/stop" do
+    @tag protocol: :tcp
+    test "can start a supervised tcp server and stop it cleanly", options do
+      {:ok, options} = Mailmaid.SMTP.ClientTest.setup_server(options)
+      assert Process.alive?(options.server_pid)
+      :ok = stop_supervised(options.server_id)
+      refute Process.alive?(options.server_pid)
+    end
+
+    @tag protocol: :ssl
+    test "can start a supervised ssl server and stop it cleanly", options do
+      {:ok, options} = Mailmaid.SMTP.ClientTest.setup_server(options)
+      assert Process.alive?(options.server_pid)
+      :ok = stop_supervised(options.server_id)
+      refute Process.alive?(options.server_pid)
+    end
+  end
+end
+
 defmodule Mailmaid.SMTP.Client.ConnectionTest do
   use ExUnit.Case, async: false
 
   setup options do
-    on_exit(fn ->
-      :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
-    end)
     Mailmaid.SMTP.ClientTest.setup_server(options)
   end
 
@@ -205,7 +239,6 @@ defmodule Mailmaid.SMTP.Client.CommandsTest do
     {:ok, socket, %{protocol: ^protocol, port: ^port}, [banner]} = CC.open(hostname, port: port, protocol: protocol)
     on_exit(fn ->
       :ok = CC.close(socket)
-      :ok = :ranch.stop_listener(Mailmaid.SMTP.ServerExample)
     end)
     {:ok, Map.merge(options, %{socket: socket, banner: banner})}
   end
