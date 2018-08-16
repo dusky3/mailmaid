@@ -69,7 +69,7 @@ defmodule Mailmaid.SMTP.ServerExample do
     {:ok, state}
   end
 
-  def handle_MAIL_extension(extension, state) do
+  def handle_MAIL_extension(extension, _state) do
     Logger.warn ["Unknown MAIL FROM extension", extension]
     :error
   end
