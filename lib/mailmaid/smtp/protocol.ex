@@ -729,7 +729,7 @@ defmodule Mailmaid.SMTP.Protocol do
     {:keep_state, state}
   end
 
-  def handle_event(:info, {:shoot, _module, transport, _port, timeout}, :wait_for_ack, state) do
+  def handle_event(:info, {:handshake, _module, transport, _port, timeout}, :wait_for_ack, state) do
     Logger.debug [
       "received shoot",
       " ref=", inspect(state.ref),
