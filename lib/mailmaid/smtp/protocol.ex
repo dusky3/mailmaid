@@ -736,14 +736,19 @@ defmodule Mailmaid.SMTP.Protocol do
       " socket=", inspect(state.socket),
       " transport=", inspect(state.transport),
     ]
-    :ok = transport.accept_ack(state.socket, timeout)
-    Logger.debug [
-      "accepted acknowledgement",
-      " ref=", inspect(state.ref),
-      " socket=", inspect(state.socket),
-      " transport=", inspect(state.transport),
-    ]
-    {:next_state, :protocol_loop, state}
+    # bypass accept_ack and do the handshake here, that way errors can be caught
+    case transport.handshake(state.socket, [], timeout) do
+      {:ok, _} ->
+        Logger.debug [
+          "accepted acknowledgement",
+          " ref=", inspect(state.ref),
+          " socket=", inspect(state.socket),
+          " transport=", inspect(state.transport),
+        ]
+        {:next_state, :protocol_loop, state}
+      {:error, _} = err ->
+        end_loop(err, state)
+    end
   end
 
   def handle_event(:enter, _event, :protocol_loop, state) do
