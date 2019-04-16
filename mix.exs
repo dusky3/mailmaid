@@ -49,6 +49,7 @@ defmodule Mailmaid.Mixfile do
     [
       {:gen_smtp, "~> 0.13"},
       {:ranch, "~> 1.6"},
+      {:gen_state_machine, "~> 2.0"},
     ]
   end
 

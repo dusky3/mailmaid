@@ -42,7 +42,7 @@ defmodule Mailmaid.SMTP.Protocol do
   @moduledoc """
   Port of gen_smtp using Ranch as the listener handler.
   """
-  #alias :ranch, as: Ranch
+  use GenStateMachine, callback_mode: [:handle_event_function, :state_enter]
 
   @maximum_size 10485760
   @builtin_extensions [{"SIZE", "10485670"}, {"8BITMIME", true}, {"PIPELINING", true}]
@@ -69,6 +69,33 @@ defmodule Mailmaid.SMTP.Protocol do
   @callback handle_VRFY(address :: String.t, callback_state_t) :: {:ok, reply :: reason_t, callback_state_t} | {:error, message :: reason_t, callback_state_t}
   @callback handle_STARTTLS(callback_state_t) :: callback_state_t
   @callback handle_other(verb :: String.t, args :: String.t, callback_state_t) :: {message :: reason_t, callback_state_t}
+
+  def start_link(ref, socket, transport, options) do
+    GenStateMachine.start_link(__MODULE__, [ref: ref, socket: socket, transport: transport, options: options], [])
+  end
+
+  def init(options) do
+    ref = options[:ref]
+    socket = options[:socket]
+    transport = options[:transport]
+    opts = options[:options]
+    state = struct(State, Enum.into(opts, %{}))
+    state = %{state | ref: ref, socket: socket, transport: transport}
+    Logger.debug [
+      "#{__MODULE__}:",
+      " initialized protocol",
+      " pid=", inspect(self()),
+      " ref=", inspect(ref),
+      " socket=", inspect(socket),
+      " transport=", inspect(transport),
+    ]
+    {:ok, :wait_for_ack, state}
+  end
+
+  def terminate(reason, _action, state) do
+    state.session_module.terminate(reason, state.callback_state)
+    :normal
+  end
 
   def get_extension(extensions, key) do
     Enum.find(extensions, fn
@@ -717,8 +744,6 @@ defmodule Mailmaid.SMTP.Protocol do
     end
   end
 
-  def callback_mode, do: [:handle_event_function, :state_enter]
-
   def handle_event(:enter, _event, :wait_for_ack, state) do
     Logger.debug [
       "waiting for acknowledgement",
@@ -780,28 +805,5 @@ defmodule Mailmaid.SMTP.Protocol do
   def handle_event(type, content, action, state) do
     IO.inspect "Unhandled Event: type=#{type} content=#{inspect content} action=#{action}"
     {:keep_state, state}
-  end
-
-  def terminate(reason, _action, state) do
-    state.session_module.terminate(reason, state.callback_state)
-    :normal
-  end
-
-  def init([ref, socket, transport, opts]) do
-    state = struct(State, Enum.into(opts, %{}))
-    state = %{state | ref: ref, socket: socket, transport: transport}
-    Logger.debug [
-      "#{__MODULE__}:",
-      " initialized protocol",
-      " pid=", inspect(self()),
-      " ref=", inspect(ref),
-      " socket=", inspect(socket),
-      " transport=", inspect(transport),
-    ]
-    {:ok, :wait_for_ack, state}
-  end
-
-  def start_link(ref, socket, transport, opts) do
-    :gen_statem.start_link(__MODULE__, [ref, socket, transport, opts], [])
   end
 end

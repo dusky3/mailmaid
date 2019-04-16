@@ -1,4 +1,5 @@
 %{
   "gen_smtp": {:hex, :gen_smtp, "0.13.0", "11f08504c4bdd831dc520b8f84a1dce5ce624474a797394e7aafd3c29f5dcd25", [:rebar3], [], "hexpm"},
+  "gen_state_machine": {:hex, :gen_state_machine, "2.0.5", "9ac15ec6e66acac994cc442dcc2c6f9796cf380ec4b08267223014be1c728a95", [:mix], [], "hexpm"},
   "ranch": {:hex, :ranch, "1.6.2", "6db93c78f411ee033dbb18ba8234c5574883acb9a75af0fb90a9b82ea46afa00", [:rebar3], [], "hexpm"},
 }

@@ -59,10 +59,10 @@ defmodule Mailmaid.SMTP.URI do
         [{:auth, :never} | options]
     end
 
-    Enum.into(config, options)
+    Keyword.merge(options, config)
   end
 
-  def process_legacy_mailer_config(config) do
+  def process_legacy_mailer_config(config) when is_list(config) do
     case config[:url] do
       nil -> config
       url ->
