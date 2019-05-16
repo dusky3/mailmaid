@@ -2,8 +2,11 @@ require Logger
 
 defmodule Mailmaid.SMTP.Client.Commands do
   alias Mailmaid.SMTP.Client.Connection
-  @type socket :: port
-  @type command_response_t :: {:ok, socket, [String.t]} | {:error, socket, {atom, atom | String.t | [String.t]}}
+
+  @type command_response_t ::
+    {:ok, Connection.socket, [String.t]} |
+    {:error, Connection.socket, {atom, atom | String.t | [String.t]}}
+
   @default_timeout 1_200_000
 
   @spec parse_extensions([String.t]) :: {String.t, %{String.t => String.t | true}}
@@ -29,7 +32,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
   end
 
   def read_multiline_reply(socket, code, acc, timeout \\ @default_timeout) do
-    case :socket.recv(socket, 0, timeout) do
+    case Connection.recv(socket, 0, timeout) do
       {:ok, packet} ->
         case packet do
           <<^code :: binary-size(3), " ", _rest :: binary>> ->
@@ -48,7 +51,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
   end
 
   def read_possible_multiline_reply(socket, timeout \\ @default_timeout) do
-    case :socket.recv(socket, 0, timeout) do
+    case Connection.recv(socket, 0, timeout) do
       {:ok, packet} ->
         case packet do
           <<code :: binary-size(3), "-", _rest :: binary>> ->
@@ -86,32 +89,32 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
-  @spec send_line(socket, String.t | list) :: :ok | {:error, term}
+  @spec send_line(Connection.socket, String.t | list) :: :ok | {:error, term}
   def send_line(socket, line) do
     data = [line, "\r\n"]
-    :socket.send(socket, data)
+    Connection.send(socket, data)
   end
 
-  @spec cmd(socket, String.t, [String.t]) :: command_response_t
+  @spec cmd(Connection.socket, String.t, [String.t]) :: command_response_t
   def cmd(socket, cmd, args \\ [])
   def cmd(socket, cmd, []), do: send_line(socket, [cmd])
   def cmd(socket, cmd, args), do: send_line(socket, [cmd, " ", args])
 
-  @spec ehlo(socket, String.t) :: command_response_t
+  @spec ehlo(Connection.socket, String.t) :: command_response_t
   def ehlo(socket, domain) when is_binary(domain) do
     Logger.debug ["< EHLO ", domain]
     cmd(socket, "EHLO", [domain])
     read_and_handle_common_reply(socket)
   end
 
-  @spec helo(socket, String.t) :: command_response_t
+  @spec helo(Connection.socket, String.t) :: command_response_t
   def helo(socket, domain) when is_binary(domain) do
     Logger.debug ["< HELO ", domain]
     cmd(socket, "HELO", [domain])
     read_and_handle_common_reply(socket)
   end
 
-  @spec auth(socket, String.t, String.t, String.t) :: command_response_t
+  @spec auth(Connection.socket, String.t, String.t, String.t) :: command_response_t
 
   def auth(socket, kind, username, password) when is_nil(username) or is_nil(password) do
     {:error, socket, {:missing_auth_details, {kind, username, password}}}
@@ -181,7 +184,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
-  @spec mail_from(socket, String.t) :: command_response_t
+  @spec mail_from(Connection.socket, String.t) :: command_response_t
   def mail_from(socket, address) when is_binary(address) do
     from = wrap_address(address)
     Logger.debug ["< MAIL FROM: ", from]
@@ -189,7 +192,7 @@ defmodule Mailmaid.SMTP.Client.Commands do
     read_and_handle_common_reply(socket)
   end
 
-  @spec rcpt_to(socket, String.t) :: command_response_t
+  @spec rcpt_to(Connection.socket, String.t) :: command_response_t
   def rcpt_to(socket, address) when is_binary(address) do
     to = wrap_address(address)
     Logger.debug ["< RCPT TO: ", to]
@@ -197,14 +200,14 @@ defmodule Mailmaid.SMTP.Client.Commands do
     read_and_handle_common_reply(socket)
   end
 
-  @spec data(socket, String.t) :: command_response_t
+  @spec data(Connection.socket, String.t) :: command_response_t
   def data(socket, body) when is_binary(body) do
     Logger.debug ["< DATA"]
     cmd(socket, "DATA")
     case read_possible_multiline_reply(socket) do
       {:ok, socket, [<<"354", _line :: binary>> | _rest]} ->
         escaped_body = :re.replace(body, <<"^\\\.">>, <<"..">>, [:global, :multiline, {:return, :binary}])
-        :socket.send(socket, [escaped_body, "\r\n.\r\n"])
+        Connection.send(socket, [escaped_body, "\r\n.\r\n"])
         read_and_handle_common_reply(socket)
       {:ok, socket, [<<"4", _line :: binary>> | _rest] = messages} -> {:error, socket, {:temporary_error, messages}}
       {:ok, socket, messages} -> {:error, socket, {:permanent_failure, messages}}
@@ -212,13 +215,13 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
-  @spec starttls(socket) :: command_response_t
+  @spec starttls(Connection.socket) :: command_response_t
   def starttls(socket) do
     Logger.debug ["< STARTTLS"]
     cmd(socket, "STARTTLS")
     case read_possible_multiline_reply(socket) do
       {:ok, socket, [<<"220", _line :: binary>> | _rest]} ->
-        case :socket.to_ssl_client(socket, [], 5000) do
+        case Connection.to_ssl_client(socket, [], 5000) do
           {:ok, ssl_socket} ->
             {:ok, ssl_socket, []}
           {:error, reason} ->
@@ -231,35 +234,35 @@ defmodule Mailmaid.SMTP.Client.Commands do
     end
   end
 
-  @spec help(socket) :: command_response_t
+  @spec help(Connection.socket) :: command_response_t
   def help(socket) do
     Logger.debug ["< HELP"]
     cmd(socket, "HELP")
     read_and_handle_common_reply(socket)
   end
 
-  @spec noop(socket) :: command_response_t
+  @spec noop(Connection.socket) :: command_response_t
   def noop(socket) do
     Logger.debug ["< NOOP"]
     cmd(socket, "NOOP")
     read_and_handle_common_reply(socket)
   end
 
-  @spec vrfy(socket, String.t) :: command_response_t
+  @spec vrfy(Connection.socket, String.t) :: command_response_t
   def vrfy(socket, address) do
     Logger.debug ["< VRFY"]
     cmd(socket, "VRFY", [address])
     read_and_handle_common_reply(socket)
   end
 
-  @spec rset(socket) :: command_response_t
+  @spec rset(Connection.socket) :: command_response_t
   def rset(socket) do
     Logger.debug ["< RSET"]
     cmd(socket, "RSET")
     read_and_handle_common_reply(socket)
   end
 
-  @spec quit(socket, non_neg_integer) :: command_response_t
+  @spec quit(Connection.socket, non_neg_integer) :: command_response_t
   def quit(socket, timeout \\ 15000) do
     Logger.debug ["< QUIT"]
     cmd(socket, "QUIT")

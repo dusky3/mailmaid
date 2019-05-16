@@ -4,7 +4,7 @@ defmodule Mailmaid.Mixfile do
   def project do
     [
       app: :mailmaid,
-      version: "1.3.0",
+      version: "1.4.0",
       build_path: "_build",
       config_path: "config/config.exs",
       deps_path: "deps",
@@ -47,7 +47,7 @@ defmodule Mailmaid.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:gen_smtp, "~> 0.13"},
+      {:gen_smtp, "~> 0.13", git: "https://github.com/Vagabond/gen_smtp.git"},
       {:ranch, "~> 1.6"},
       {:gen_state_machine, "~> 2.0"},
     ]

@@ -2,6 +2,7 @@ require Logger
 
 defmodule Mailmaid.SMTP.LegacyClient do
   import Mailmaid.SMTP.Client.Socket
+  alias :smtp_socket, as: Socket
 
   defp default_options do
     [
@@ -187,7 +188,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
 
   def try_MAIL_FROM(from, socket, _extensions) do
     from = wrap_address(from)
-    :socket.send(socket, ["MAIL FROM: ", from, "\r\n"])
+    Socket.send(socket, ["MAIL FROM: ", from, "\r\n"])
 
     case read_possible_multiline_reply(socket) do
       {:ok, <<"250", _rest :: binary>>} ->
@@ -211,7 +212,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
     to = wrap_address(to)
 
     payload = ["RCPT TO: ", to, "\r\n"]
-    :ok = :socket.send(socket, payload)
+    :ok = Socket.send(socket, payload)
 
     case read_possible_multiline_reply(socket) do
       {:ok, <<"250", _rest :: binary>>} ->
@@ -235,12 +236,12 @@ defmodule Mailmaid.SMTP.LegacyClient do
   end
 
   def try_DATA(body, socket, _extensions) do
-    :socket.send(socket, "DATA\r\n")
+    Socket.send(socket, "DATA\r\n")
 
     case read_possible_multiline_reply(socket) do
       {:ok, <<"354", _rest :: binary>>} ->
         escaped_body = :re.replace(body, <<"^\\\.">>, <<"..">>, [:global, :multiline, {:return, :binary}])
-        :socket.send(socket, [escaped_body, "\r\n.\r\n"])
+        Socket.send(socket, [escaped_body, "\r\n.\r\n"])
 
         case read_possible_multiline_reply(socket) do
           {:ok, <<"250 ", receipt :: binary>>} ->
@@ -270,7 +271,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
   def to_list_string(binary) when is_binary(binary), do: :erlang.binary_to_list(binary)
 
   def try_EHLO(socket, options) do
-    :ok = :socket.send(socket, ["EHLO ", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"])
+    :ok = Socket.send(socket, ["EHLO ", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"])
     case read_possible_multiline_reply(socket) do
       {:ok, <<"500", _rest :: binary>>} ->
         try_HELO(socket, options)
@@ -285,7 +286,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
   end
 
   def try_HELO(socket, options) do
-    :ok = :socket.send(socket, ["HELO", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"])
+    :ok = Socket.send(socket, ["HELO", :proplists.get_value(:hostname, options, :smtp_util.guess_FQDN()), "\r\n"])
 
     case read_possible_multiline_reply(socket) do
       {:ok, <<"250", _rest :: binary>>} ->
@@ -326,11 +327,11 @@ defmodule Mailmaid.SMTP.LegacyClient do
   end
 
   def do_STARTTLS(socket, options) do
-    :socket.send(socket, "STARTTLS\r\n")
+    Socket.send(socket, "STARTTLS\r\n")
 
     case read_possible_multiline_reply(socket) do
       {:ok, <<"220", _rest :: binary>>} ->
-        case :socket.to_ssl_client(socket, [], 5000) do
+        case Socket.to_ssl_client(socket, [], 5000) do
           {:ok, new_socket} ->
             {:ok, extensions} = try_EHLO(new_socket, options)
             {new_socket, extensions}
@@ -377,7 +378,7 @@ defmodule Mailmaid.SMTP.LegacyClient do
       _ -> 25
     end
 
-    case :socket.connect(proto, host, port, sock_opts, 5000) do
+    case Socket.connect(proto, host, port, sock_opts, 5000) do
       {:ok, socket} ->
         case read_possible_multiline_reply(socket) do
           {:ok, <<"220", banner :: binary>>} ->
