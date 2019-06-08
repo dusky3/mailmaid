@@ -2,8 +2,10 @@ defmodule Mailmaid.SMTP.Client.Socket do
   @timeout 1_200_000
   #@timeout 10_000
 
+  alias :smtp_socket, as: Socket
+
   def read_multiline_reply(socket, code, acc) do
-    case :socket.recv(socket, 0, @timeout) do
+    case Socket.recv(socket, 0, @timeout) do
       {:ok, packet} ->
         case {:binstr.substr(packet, 1, 3), :binstr.substr(packet, 4, 1)} do
           {^code, <<" ">>} ->
@@ -23,7 +25,7 @@ defmodule Mailmaid.SMTP.Client.Socket do
   end
 
   def read_possible_multiline_reply(socket) do
-    case :socket.recv(socket, 0, @timeout) do
+    case Socket.recv(socket, 0, @timeout) do
       {:ok, packet} ->
         case String.slice(packet, 3, 1) do
           <<"-">> ->
@@ -40,8 +42,8 @@ defmodule Mailmaid.SMTP.Client.Socket do
   end
 
   def quit(socket) do
-    :socket.send(socket, "QUIT\r\n")
-    :socket.close(socket)
+    Socket.send(socket, "QUIT\r\n")
+    Socket.close(socket)
     :ok
   end
 end
