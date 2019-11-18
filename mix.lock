@@ -1,5 +1,5 @@
 %{
-  "gen_smtp": {:git, "https://github.com/Vagabond/gen_smtp.git", "02018e72b43f315cfe119404bce87d26156e5b6e", []},
+  "gen_smtp": {:hex, :gen_smtp, "0.15.0", "9f51960c17769b26833b50df0b96123605a8024738b62db747fece14eb2fbfcc", [:rebar3], [], "hexpm"},
   "gen_state_machine": {:hex, :gen_state_machine, "2.0.5", "9ac15ec6e66acac994cc442dcc2c6f9796cf380ec4b08267223014be1c728a95", [:mix], [], "hexpm"},
   "ranch": {:hex, :ranch, "1.7.1", "6b1fab51b49196860b733a49c07604465a47bdb78aa10c1c16a3d199f7f8c881", [:rebar3], [], "hexpm"},
 }

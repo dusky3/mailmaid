@@ -47,7 +47,7 @@ defmodule Mailmaid.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:gen_smtp, "~> 0.13", git: "https://github.com/Vagabond/gen_smtp.git"},
+      {:gen_smtp, "~> 0.15"},
       {:ranch, "~> 1.6"},
       {:gen_state_machine, "~> 2.0"},
     ]
